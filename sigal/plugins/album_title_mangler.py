@@ -37,7 +37,6 @@ Btw, the given example above is the default name mangling rule.
 
 import collections
 import logging
-import os
 import os.path
 
 from sigal import signals
@@ -54,6 +53,7 @@ def process_album(album):
         value = orderedDict[key]
         toMangle = toMangle.replace(key, value)
     album.title = toMangle
+    logger.info("Album name mangled to '%s'." % toMangle)
 
 
 def register(settings):
@@ -63,7 +63,9 @@ def register(settings):
         dictInput = settings[pluginName]
         od = collections.OrderedDict(dictInput)
         orderedDict = od
+        logger.info(
+            "Using the following name mangling rules: %s", orderedDict)
     except:
         # Settings didn't contain input. Use the default.
-        logger.warn("Using the default name mangling rules: %s", orderedDict)
+        logger.info("Using the default name mangling rules: %s", orderedDict)
     signals.album_initialized.connect(process_album)
