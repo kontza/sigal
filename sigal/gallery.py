@@ -40,7 +40,7 @@ from os.path import isfile, join, splitext
 from PIL import Image as PILImage
 
 from . import image, video, signals
-from .compat import UnicodeMixin, strxfrm, url_quote, text_type
+from .compat import PY2, UnicodeMixin, strxfrm, url_quote, text_type
 from .image import process_image, get_exif_tags, get_exif_data
 from .settings import get_thumb
 from .utils import (Devnull, copy, check_or_create_dir, url_from_path,
@@ -554,7 +554,10 @@ class Gallery(object):
             # 63 is the total length of progressbar, label, percentage, etc
             available_length = get_terminal_size()[0] - 64
             if x and available_length > 10:
-                return text_type(x.name)[:available_length].encode('utf-8')
+                text = text_type(x.name)[:available_length]
+                if PY2:
+                    text = text.encode('utf-8')
+                return text
             else:
                 return ""
 
@@ -570,9 +573,9 @@ class Gallery(object):
         bar_opt = {'label': "Processing files",
                    'show_pos': True,
                    'file': self.progressbar_target}
+        failed_files = []
 
         if self.pool:
-            failed_files = []
             try:
                 with progressbar(length=len(media_list), **bar_opt) as bar:
                     for res in self.pool.imap_unordered(worker, media_list):
@@ -591,14 +594,16 @@ class Gallery(object):
                     "defined in the settings file, which can't be serialized.",
                     exc_info=True)
                 sys.exit('Abort')
-
-            if failed_files:
-                self.remove_files(failed_files)
-            print('')
         else:
             with progressbar(media_list, **bar_opt) as medias:
                 for media_item in medias:
-                    process_file(media_item)
+                    res = process_file(media_item)
+                    if res:
+                        failed_files.append(res)
+
+        if failed_files:
+            self.remove_files(failed_files)
+        print('')
 
         if self.settings['write_html']:
             writer = Writer(self.settings, index_title=self.title)
