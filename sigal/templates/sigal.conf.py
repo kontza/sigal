@@ -172,7 +172,8 @@ ignore_files = []
 # this will break with the multiprocessing feature (the settings dict obtained
 # from this file must be serializable).
 # plugins = ['sigal.plugins.adjust', 'sigal.plugins.copyright',
-#            'sigal.plugins.upload_s3', 'sigal.plugins.media_page']
+#            'sigal.plugins.upload_s3', 'sigal.plugins.media_page',
+#            'sigal.plugins.album_title_mangler']
 
 # Add a copyright text on the image (default: '')
 # copyright = "© An example copyright message"
@@ -190,3 +191,12 @@ ignore_files = []
 # 	'policy': 'public-read',
 # 	'overwrite': False
 # }
+
+# Settings for album_title_mangler plugin:
+# An array of tuples containing the name mangling rules.
+# Tuple's first value will is the string that will be
+# replaced with the tuple's second value.
+#
+# Mangling is run in left to right order.
+# album_title_mangler = [('__', '-'),('_', ' ')]
+
