@@ -47,14 +47,17 @@ _DEFAULT_CONFIG = {
     'keep_orig': False,
     'links': '',
     'locale': '',
+    'make_thumbs': True,
     'medias_sort_attr': 'filename',
     'medias_sort_reverse': False,
-    'make_thumbs': True,
-    'output_filename': 'index.html',
+    'mp4_options': ['-crf', '23', '-strict', '-2'],
     'orig_dir': 'original',
     'orig_link': False,
-    'plugins': [],
+    'output_filename': 'index.html',
+    'piwik': {'tracker_url': '', 'site_id': 0},
     'plugin_paths': [],
+    'plugins': [],
+    'show_map': False,
     'source': '',
     'theme': 'colorbox',
     'thumb_dir': 'thumbnails',
@@ -62,9 +65,13 @@ _DEFAULT_CONFIG = {
     'thumb_prefix': '',
     'thumb_size': (200, 150),
     'thumb_suffix': '',
+    'thumb_video_delay': '0',
     'title': '',
+    'use_assets_cdn': True,
     'use_orig': False,
+    'video_format': 'webm',
     'video_size': (480, 360),
+    'watermark': '',
     'webm_options': ['-crf', '10', '-b:v', '1.6M',
                      '-qmin', '4', '-qmax', '63'],
     'write_html': True,
@@ -123,9 +130,11 @@ def read_settings(filename=None):
                         if k not in ['__builtins__'])
 
         # Make the paths relative to the settings file
-        paths = ['source', 'destination']
+        paths = ['source', 'destination', 'watermark']
 
-        if os.path.isdir(join(settings_path, settings['theme'])):
+        if os.path.isdir(join(settings_path, settings['theme'])) and \
+                os.path.isdir(join(settings_path, settings['theme'],
+                                   'templates')):
             paths.append('theme')
 
         enc = locale.getpreferredencoding() if PY2 else None

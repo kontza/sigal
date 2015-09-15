@@ -29,9 +29,9 @@ import re
 import shutil
 from os.path import splitext
 
-from . import image
+from . import image, utils
 from .settings import get_thumb, Status
-from .utils import call_subprocess
+from .utils import call_subprocess, is_valid_html5_video
 
 
 class SubprocessException(Exception):
@@ -75,12 +75,12 @@ def video_size(source):
     return x, y
 
 
-def generate_video(source, outname, size, options=None):
+def generate_video(source, outname, settings, options=None):
     """Video processor.
 
     :param source: path to a video
     :param outname: path to the generated video
-    :param size: size of the resized video `(width, height)`
+    :param settings: settings dict
     :param options: array of options passed to ffmpeg
 
     """
@@ -89,7 +89,7 @@ def generate_video(source, outname, size, options=None):
     # Don't transcode if source is in the required format and
     # has fitting datedimensions, copy instead.
     w_src, h_src = video_size(source)
-    w_dst, h_dst = size
+    w_dst, h_dst = settings['video_size']
     logger.debug('Video size: %i, %i -> %i, %i', w_src, h_src, w_dst, h_dst)
 
     base, src_ext = splitext(source)
@@ -123,7 +123,7 @@ def generate_video(source, outname, size, options=None):
     check_subprocess(cmd, source, outname)
 
 
-def generate_thumbnail(source, outname, box, fit=True, options=None):
+def generate_thumbnail(source, outname, box, delay, fit=True, options=None):
     """Create a thumbnail image for the video source, based on ffmpeg."""
 
     logger = logging.getLogger(__name__)
@@ -131,7 +131,7 @@ def generate_thumbnail(source, outname, box, fit=True, options=None):
 
     # dump an image of the video
     cmd = ['ffmpeg', '-i', source, '-an', '-r', '1',
-           '-vframes', '1', '-y', tmpfile]
+           '-ss', delay, '-vframes', '1', '-y', tmpfile]
     logger.debug('Create thumbnail for video: %s', ' '.join(cmd))
 
     try:
@@ -148,13 +148,26 @@ def generate_thumbnail(source, outname, box, fit=True, options=None):
 def process_video(filepath, outpath, settings):
     """Process a video: resize, create thumbnail."""
 
+    logger = logging.getLogger(__name__)
     filename = os.path.split(filepath)[1]
-    basename = splitext(filename)[0]
-    outname = os.path.join(outpath, basename + '.webm')
+    basename, ext = splitext(filename)
 
     try:
-        generate_video(filepath, outname, settings['video_size'],
-                       options=settings['webm_options'])
+        if settings['use_orig'] and is_valid_html5_video(ext):
+            outname = os.path.join(outpath, filename)
+            utils.copy(filepath, outname, symlink=settings['orig_link'])
+        else:
+            valid_formats = ['mp4', 'webm']
+            video_format = settings['video_format']
+
+            if video_format not in valid_formats:
+                logger.error('Invalid video_format. Please choose one of: %s',
+                             valid_formats)
+                raise ValueError
+
+            outname = os.path.join(outpath, basename + '.' + video_format)
+            generate_video(filepath, outname, settings,
+                           options=settings.get(video_format + '_options'))
     except Exception:
         return Status.FAILURE
 
@@ -163,7 +176,8 @@ def process_video(filepath, outpath, settings):
         try:
             generate_thumbnail(
                 outname, thumb_name, settings['thumb_size'],
-                fit=settings['thumb_fit'], options=settings['jpg_options'])
+                settings['thumb_video_delay'], fit=settings['thumb_fit'],
+                options=settings['jpg_options'])
         except Exception:
             return Status.FAILURE
 

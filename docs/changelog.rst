@@ -2,6 +2,46 @@
  Changelog
 ===========
 
+Version 1.1.0
+~~~~~~~~~~~~~
+
+Released on 2015-xx-xx.
+
+Nothing yet.
+
+Version 1.0.0
+~~~~~~~~~~~~~
+
+Released on 2015-09-07.
+
+- Colorbox: Use the media title if available (fix #145).
+- Adds a thumb_video_delay parameter for the creation of thumbnails with fade-in
+  videos [#143].
+- Add fullscreen display support to Galleria theme [#149].
+- Add watermark plugin [#148].
+- Allow more settings for font, color, position in the copyright plugin [#150].
+- Tables support in markdown [#155].
+- Honor 'use_orig' for videos [#153].
+- Fix for the relative path checks for Windows [#160].
+- Add support for mp4 [#159].
+- Add size property into Image object [#164].
+- Make sure that bad exif data does not crash sigal.
+- Strip spaces for some exif tags (fix #154).
+- Add support for piwik [#165].
+- Add a theme using photoswipe [#163].
+- Add a setting to disable google fonts and jquery [#168].
+- Add swipe to colorbox theme [#116].
+- Map view for albums in galleria theme [#45].
+
+Version 0.9.2
+~~~~~~~~~~~~~
+
+Released on 2015-01-25.
+
+- Allow to specify the author of an album (ref #139).
+- Fix encoding issue with the progress bar on py3 (fix #137).
+- Avoid failure when an image can't be read (fix #134).
+
 Version 0.9.1
 ~~~~~~~~~~~~~
 
