@@ -1,6 +1,7 @@
 # -*- coding:utf-8 -*-
 
 # Copyright (c) 2009-2014 - Simon Conseil
+# Copyright (c) 2015 - François D.
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to
@@ -112,7 +113,7 @@ def generate_image(source, outname, settings, options=None):
     save_image(img, outname, outformat, options=options, autoconvert=True)
 
 
-def generate_thumbnail(source, outname, box, fit=True, options=None):
+def generate_thumbnail(source, outname, box, delay, fit=True, options=None):
     """Create a thumbnail image."""
 
     logger = logging.getLogger(__name__)
@@ -151,12 +152,28 @@ def process_image(filepath, outpath, settings):
         if settings['make_thumbs']:
             thumb_name = os.path.join(outpath, get_thumb(settings, filename))
             generate_thumbnail(outname, thumb_name, settings['thumb_size'],
+                               settings['thumb_video_delay'],
                                fit=settings['thumb_fit'], options=options)
     except Exception as e:
         logger.info('Failed to process: %r', e)
         return Status.FAILURE
 
     return Status.SUCCESS
+
+
+def get_size(file_path):
+    """Return image size (width and height)."""
+    try:
+        im = PILImage.open(file_path)
+    except (IOError, IndexError, TypeError, AttributeError) as e:
+        logger = logging.getLogger(__name__)
+        logger.error("Could not read size of %s due to %r", file_path, e)
+    else:
+        width, height = im.size
+        return {
+            'width': width,
+            'height': height
+        }
 
 
 def get_exif_data(filename):
@@ -187,13 +204,24 @@ def get_exif_tags(data):
     logger = logging.getLogger(__name__)
     simple = {}
 
+    for tag in ('Model', 'Make', 'LensModel'):
+        if tag in data:
+            simple[tag] = data[tag].strip()
+
     if 'FNumber' in data:
         fnumber = data['FNumber']
-        simple['fstop'] = float(fnumber[0]) / fnumber[1]
+        try:
+            simple['fstop'] = float(fnumber[0]) / fnumber[1]
+        except Exception:
+            logger.debug('Skipped invalid FNumber: %r', fnumber, exc_info=True)
 
     if 'FocalLength' in data:
         focal = data['FocalLength']
-        simple['focal'] = round(float(focal[0]) / focal[1])
+        try:
+            simple['focal'] = round(float(focal[0]) / focal[1])
+        except Exception:
+            logger.debug('Skipped invalid FocalLength: %r', focal,
+                         exc_info=True)
 
     if 'ExposureTime' in data:
         if isinstance(data['ExposureTime'], tuple):

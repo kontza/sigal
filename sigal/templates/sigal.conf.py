@@ -22,8 +22,11 @@ source = 'pictures'
 # destination = '_build'
 
 # Theme :
-# - colorbox (default), galleria, or the path to a custom theme directory
+# - colorbox (default), galleria, photoswipe, or the path to a custom theme directory
 theme = 'galleria'
+
+# Author. Used in the footer of the pages and in the author meta tag.
+# author = ''
 
 # Use originals in gallery (default: False). If True, this will bypass all
 # processing steps (resize, auto-orient, recompress, and any plugin-specific
@@ -37,6 +40,10 @@ theme = 'galleria'
 
 # Size of resized image (default: (640, 480))
 img_size = (800, 600)
+
+# Should we use openlayers to show a map of the images where possible?
+# This option only has an effect on the galleria theme for the while.
+# show_map = False
 
 # Pilkit processor used to resize the image
 # (see http://pilkit.readthedocs.org/en/latest/#processors)
@@ -55,6 +62,11 @@ img_size = (800, 600)
 # If True, EXIF data from the original image is copied to the resized image
 # copy_exif_data = False
 
+# Jpeg options
+# jpg_options = {'quality': 85,
+#                'optimize': True,
+#                'progressive': True}
+
 # --------------------
 # Thumbnail generation
 # --------------------
@@ -71,15 +83,14 @@ img_size = (800, 600)
 
 # Thumbnail size (default: (200, 150))
 # For the galleria theme, use 280 px for the width
-# For the colorbox theme, use 200 px for the width
+# For the colorbox and photoswipe theme, use 200 px for the width
 thumb_size = (280, 210)
 
 # Crop the image to fill the box
 # thumb_fit = True
 
-# -------------
-# Album options
-# -------------
+# Delay in seconds to avoid black thumbnails in videos with fade-in
+# thumb_video_delay = '0'
 
 # Keep original image (default: False)
 # keep_orig = True
@@ -108,13 +119,12 @@ ignore_directories = []
 ignore_files = []
 
 # -------------
-# Miscellaneous
+# Video options
 # -------------
 
-# Jpeg options
-# jpg_options = {'quality': 85,
-#                'optimize': True,
-#                'progressive': True}
+# Video format
+# specify an alternative format, valid are 'webm' (default) and 'mp4'
+# video_format = 'webm'
 
 # Webm options
 # Options used in ffmpeg to encode the webm video. You may want to read
@@ -124,8 +134,17 @@ ignore_files = []
 # webm_options = ['-crf', '10', '-b:v', '1.6M',
 #                 '-qmin', '4', '-qmax', '63']
 
+# MP4 options
+# Options used to encode the mp4 video. You may want to read
+# https://trac.ffmpeg.org/wiki/Encode/H.264
+# mp4_options = ['-crf', '23' ]
+
 # Size of resized video (default: (480, 360))
 # video_size = (480, 360)
+
+# -------------
+# Miscellaneous
+# -------------
 
 # Write HTML files. If False, sigal will only process the images.
 # write_html = True
@@ -136,12 +155,21 @@ ignore_files = []
 # Add output filename (see above) to the URLs
 # index_in_url = False
 
+# Use CDN for assets (Google fonts, JQuery).
+# If False some fonts may not be available.
+# use_assets_cdn = True
+
 # A list of links (tuples (title, URL))
 # links = [('Example link', 'http://example.org'),
 #          ('Another link', 'http://example.org')]
 
 # Google Analytics tracking code (UA-xxxx-x)
 # google_analytics = ''
+
+# Piwik tracking
+# tracker_url must not contain trailing slash.
+# Example : {'tracker_url': 'http://stats.domain.com', 'site_id' : 2}
+# piwik = {'tracker_url': '', 'site_id' : 0}
 
 # Set zip_gallery to either False or a file name. The final archive will
 # contain all resized or original files (depending on `zip_media_format`).

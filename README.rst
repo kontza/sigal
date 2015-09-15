@@ -19,16 +19,16 @@ and it allows to build a static gallery of images with the following features:
 * Parallel processing.
 * MIT licensed.
 
-The idea behind Sigal is to ease the use of the javascript librairies like
-galleria_. These librairies do a great job to display the images, Sigal does
-what is missing: resize images, create thumbnails, generate html pages.
+The idea behind Sigal is to ease the use of the javascript libraries like
+galleria_. These libraries do a great job to display the images, Sigal does
+what is missing: resize images, create thumbnails, generate HTML pages.
 
-Sigal is compatible with Python 2.7 and 3.3.
+Sigal is compatible with Python 2.7 and 3.3+.
 
 Links :
 
 * Latest documentation on the website_
-* Source, issues and pull requests on Github_
+* Source, issues and pull requests on GitHub_
 * Releases on PyPI_
 * ``#sigal`` on Freenode, or with the webchat_ interface.
 * `Mailing list`_ at Librelist (Archives_).
@@ -36,19 +36,22 @@ Links :
 Themes & Demo
 -------------
 
-Sigal comes with two themes, based on the colorbox_ and galleria_
+Sigal comes with three themes, based on the colorbox_, galleria_ and photoswipe_
 Javascript libraries:
 
 - `colorbox demo`_
 - `galleria demo`_
+- `photoswipe demo`_
 
 .. _website: http://sigal.saimon.org/
-.. _Github: https://github.com/saimn/sigal/
+.. _GitHub: https://github.com/saimn/sigal/
 .. _PyPI: http://pypi.python.org/pypi/sigal
 .. _galleria: http://galleria.io/
 .. _colorbox: http://www.jacklmoore.com/colorbox
+.. _photoswipe: http://photoswipe.com
 .. _galleria demo: http://saimon.org/sigal-demo/galleria/
 .. _colorbox demo: http://saimon.org/sigal-demo/colorbox/
+.. _photoswipe demo: http://saimon.org/sigal-demo/photoswipe/
 .. _webchat: http://webchat.freenode.net/?channels=sigal
 .. _Archives: http://librelist.com/browser/sigal/
 .. _Mailing list: mailto:sigal@librelist.com

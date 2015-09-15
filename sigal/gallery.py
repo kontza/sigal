@@ -3,6 +3,7 @@
 # Copyright (c) 2009-2014 - Simon Conseil
 # Copyright (c) 2013      - Christophe-Marie Duquesne
 # Copyright (c) 2014      - Jonas Kaufmann
+# Copyright (c) 2015      - François D.
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to
@@ -37,14 +38,14 @@ from collections import defaultdict
 from datetime import datetime
 from itertools import cycle
 from os.path import isfile, join, splitext
-from PIL import Image as PILImage
 
 from . import image, video, signals
 from .compat import PY2, UnicodeMixin, strxfrm, url_quote, text_type
-from .image import process_image, get_exif_tags, get_exif_data
+from .image import process_image, get_exif_tags, get_exif_data, get_size
 from .settings import get_thumb
 from .utils import (Devnull, copy, check_or_create_dir, url_from_path,
-                    read_markdown, cached_property)
+                    read_markdown, cached_property, is_valid_html5_video,
+                    get_mime)
 from .video import process_video
 from .writer import Writer
 
@@ -122,6 +123,7 @@ class Media(UnicodeMixin):
             try:
                 generator(self.src_path, self.thumb_path,
                           self.settings['thumb_size'],
+                          self.settings['thumb_video_delay'],
                           fit=self.settings['thumb_fit'])
             except Exception as e:
                 self.logger.error('Failed to generate thumbnail: %s', e)
@@ -166,6 +168,17 @@ class Image(Media):
                                 self.src_path)
             return None
 
+    @cached_property
+    def size(self):
+        return get_size(self.dst_path)
+
+    @cached_property
+    def thumb_size(self):
+        return get_size(self.thumb_path)
+
+    def has_location(self):
+        return self.exif is not None and 'gps' in self.exif
+
 
 class Video(Media):
     """Gather all informations on a video file."""
@@ -175,11 +188,19 @@ class Video(Media):
 
     def __init__(self, filename, path, settings):
         super(Video, self).__init__(filename, path, settings)
-        base = splitext(filename)[0]
+        (base, ext) = splitext(filename)
         self.date = None
         self.src_filename = filename
-        self.filename = self.url = base + '.webm'
-        self.dst_path = join(settings['destination'], path, base + '.webm')
+        if not settings['use_orig'] or not is_valid_html5_video(ext):
+            video_format = settings['video_format']
+
+            ext = '.' + video_format
+
+            self.filename = self.url = base + ext
+            self.mime = get_mime(ext)
+            self.dst_path = join(settings['destination'], path, base + ext)
+        else:
+            self.mime = get_mime(ext)
 
 
 class Album(UnicodeMixin):
@@ -281,6 +302,11 @@ class Album(UnicodeMixin):
             for key, val in meta.items():
                 setattr(self, key, val)
 
+        try:
+            self.author = self.meta['author'][0]
+        except KeyError:
+            self.author = self.settings.get('author')
+
     def create_output_directories(self):
         """Create output directories for thumbnails and original images."""
         check_or_create_dir(self.dst_path)
@@ -355,17 +381,18 @@ class Album(UnicodeMixin):
             for f in self.medias:
                 ext = splitext(f.filename)[1]
                 if ext.lower() in Image.extensions:
-                    try:
-                        im = PILImage.open(f.src_path)
-                    except:
-                        self.logger.error("Failed to open %s", f.src_path)
-                    else:
-                        if im.size[0] > im.size[1]:
-                            self._thumbnail = join(self.name, f.thumbnail)
-                            self.logger.debug(
-                                "Use 1st landscape image as thumbnail for %r :"
-                                " %s", self, self._thumbnail)
-                            return url_from_path(self._thumbnail)
+                    # Use f.size if available as it is quicker (in cache), but
+                    # fallback to the size of src_path if dst_path is missing
+                    size = f.size
+                    if size is None:
+                        size = get_size(f.src_path)
+
+                    if size['width'] > size['height']:
+                        self._thumbnail = join(self.name, f.thumbnail)
+                        self.logger.debug(
+                            "Use 1st landscape image as thumbnail for %r :"
+                            " %s", self, self._thumbnail)
+                        return url_from_path(self._thumbnail)
 
             # else simply return the 1st media file
             if not self._thumbnail and self.medias:
@@ -409,6 +436,13 @@ class Album(UnicodeMixin):
 
         breadcrumb.reverse()
         return breadcrumb
+
+    @property
+    def show_map(self):
+        """Check if we have at least one photo with GPS location in the album
+        """
+        return any(image.has_location() for image in self.images)
+
 
     @property
     def zip(self):

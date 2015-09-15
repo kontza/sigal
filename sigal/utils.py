@@ -28,6 +28,10 @@ from subprocess import Popen, PIPE
 
 from . import compat
 
+VIDEO_MIMES = {'.mp4': 'video/mp4',
+               '.webm': 'video/webm',
+               '.ogv': 'video/ogg'}
+
 
 class Devnull(object):
     """'Black hole' for output that should not be printed"""
@@ -73,7 +77,9 @@ def read_markdown(filename):
     with codecs.open(filename, 'r', 'utf-8-sig') as f:
         text = f.read()
 
-    md = Markdown(extensions=['meta'], output_format='html5')
+    md = Markdown(extensions=['markdown.extensions.meta',
+                              'markdown.extensions.tables'],
+                  output_format='html5')
     output = {'description': md.convert(text)}
 
     try:
@@ -96,6 +102,16 @@ def call_subprocess(cmd):
         stderr = stderr.decode('utf8')
         stdout = stdout.decode('utf8')
     return p.returncode, stdout, stderr
+
+
+def is_valid_html5_video(ext):
+    """Checks if ext is a supported HTML5 video."""
+    return ext in VIDEO_MIMES.keys()
+
+
+def get_mime(ext):
+    """Returns mime type for extension."""
+    return VIDEO_MIMES[ext]
 
 
 class cached_property(object):
