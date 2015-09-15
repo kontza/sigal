@@ -4,8 +4,5 @@ click
 cssmin
 Jinja2
 Markdown
-Pillow
 pilkit
 pytest
-Sphinx
-sphinxcontrib-issuetracker

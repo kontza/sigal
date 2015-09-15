@@ -124,7 +124,8 @@ class Media(UnicodeMixin):
                           self.settings['thumb_size'],
                           fit=self.settings['thumb_fit'])
             except Exception as e:
-                self.logger.error('Failed to generate thumbnail: %s', e)
+                self.logger.error('Failed to generate thumbnail ({0}/{1}): %s'.
+                                  format(self.path, self.src_filename), e)
                 return
         return url_from_path(self.thumb_name)
 
