@@ -14,3 +14,5 @@ docs/_build
 htmlcov/
 output/
 .DS_Store
+venv
+tests/sample/pictures/Album_with__underscored_name
