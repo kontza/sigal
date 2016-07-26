@@ -1,6 +1,6 @@
 # -*- coding:utf-8 -*-
 
-# Copyright (c) 2009-2014 - Simon Conseil
+# Copyright (c) 2009-2016 - Simon Conseil
 # Copyright (c) 2013      - Christophe-Marie Duquesne
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -31,6 +31,7 @@ from .compat import PY2, text_type
 
 
 _DEFAULT_CONFIG = {
+    'albums_sort_attr': 'name',
     'albums_sort_reverse': False,
     'autorotate_images': True,
     'colorbox_column_size': 4,
@@ -140,15 +141,14 @@ def read_settings(filename=None):
         enc = locale.getpreferredencoding() if PY2 else None
 
         for p in paths:
-            path = settings[p]
-            if path and not isabs(path):
-                settings[p] = abspath(normpath(join(settings_path, path)))
-                logger.debug("Rewrite %s : %s -> %s", p, path, settings[p])
-
             # paths must to be unicode strings so that os.walk will return
             # unicode dirnames and filenames
             if PY2 and isinstance(settings[p], str):
                 settings[p] = settings[p].decode(enc)
+            path = settings[p]
+            if path and not isabs(path):
+                settings[p] = abspath(normpath(join(settings_path, path)))
+                logger.debug("Rewrite %s : %s -> %s", p, path, settings[p])
 
         if settings['title'] and not isinstance(settings['title'], text_type):
             settings['title'] = settings['title'].decode('utf8')

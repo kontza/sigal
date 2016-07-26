@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
 
     <title>{{ album.title|striptags }}</title>
     <meta name="description" content="">
@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="{{ theme.url }}/classic/galleria.classic.css">
     <link rel="stylesheet" href="{{ theme.url }}/css/style.min.css">
     {% if settings.use_assets_cdn %}
-    <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Molengo">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Molengo">
     <style>
       body { font: 16px/1.5 Molengo, sans-serif; }
       h1, h2, h3, h4, h5, h6 { font-family: "PT Sans", sans-serif; }
@@ -21,42 +21,10 @@
       body { font-family: "Helvetica Neue",Helvetica,Arial,sans-serif; }
     </style>
     {% endif %}
-    <!--[if lt IE 9]>
-        <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
-    <![endif]-->
     {% if settings.show_map and album.show_map %}
     <link rel="stylesheet" href="{{ theme.url }}/leaflet/leaflet.css" />
     <script src="{{ theme.url }}/leaflet/leaflet.js"></script>
-
-
     <style type="text/css">
-        .gallery-map-toggle {
-          cursor: pointer;
-        }
-
-        /* Mimic .galleria-stage to use the same area for the map */
-        #galleria-map {
-          position: absolute;
-          bottom: 80px;
-          left: 10px;
-          top: 0;
-          right: 10px;
-        }
-
-        /* We need to have more contract between active and inactive images
-           for maps, or we may not know which is the selected. */
-        .galleria-thumbnails .galleria-image.active {
-           opacity: 1;
-        }
-        .galleria-thumbnails .galleria-image {
-          opacity: 0.6;
-        }
-        .icons {
-          float: right;
-        }
-        #gallery {
-          clear: both;
-        }
     </style>
     {% endif %}
   </head>
@@ -123,14 +91,14 @@
               {% endif %}
             {% endif %}
           {%- endmacro %}
-        {% if settings.show_map and album.show_map %}
         <div class="icons">
+          {% if settings.show_map and album.show_map %}
           <a class="gallery-map-toggle"><img src="{{ theme.url }}/img/map.png"
             title="Show/Hide map" alt="Show/Hide Map" /></a>
+          {% endif %}
           <a id="fullscreen"><img src="{{ theme.url }}/img/fullscreen.png"
             title="Fullscreen" alt="Fullscreen" /></a>
         </div>
-        {% endif %}
         <div id="gallery">
           {% for media in album.medias %}
             {% if media.type == "image" %}
@@ -147,7 +115,7 @@
                     data-title="{{ media.title if media.title else media.filename }}"
                     data-description="{{ img_description(media) }}"
                     data-layer="<video controls>
-                                  <source src='{{ media.filename }}' type='video/webm' />
+                                  <source src='{{ media.filename }}' type='{{ media.mime }}' />
                                 </video>" />
               </a>
             {% endif %}
@@ -179,9 +147,10 @@
 
     {% if album.medias %}
     {% if settings.use_assets_cdn %}
-    <script src="//code.jquery.com/jquery-1.11.1.min.js"></script>
+    <script src="https://code.jquery.com/jquery-1.11.1.min.js"></script>
+    {% else %}
+    <script src="{{ theme.url }}/js/jquery-1.11.1.min.js"></script>
     {% endif %}
-    <script>!window.jQuery && document.write(unescape('%3Cscript src="{{ theme.url }}/js/jquery-1.11.1.min.js"%3E%3C/script%3E'))</script>
     <script src="{{ theme.url }}/js/galleria-1.4.2.min.js"></script>
     <script src="{{ theme.url }}/js/galleria.classic.min.js"></script>
     <script src="{{ theme.url }}/js/galleria.history.min.js"></script>
@@ -278,12 +247,14 @@
 
         var stage = $(".galleria-stage");
         var mapdiv = $("#galleria-map");
+        var icons = $(".icons");
 
         if (stage.attr.hidden == true) {
             stage.attr.hidden = false;
             $(".galleria-info-link").show();
             mapdiv.hide();
             stage.css("opacity", "1");
+            icons.css("background-color", "inherit");
             /* Change display of the Map link */
             $(".gallery-map-toggle img")[0].src = "{{ theme.url }}/img/map.png";
         } else {
@@ -292,6 +263,7 @@
             mapdiv.show();
             /* Play with the stage opacity otherwise galleria will go mad */
             stage.css("opacity", "0");
+            icons.css("background-color", "#333");
             /* Change display of the Map link */
             $(".gallery-map-toggle img")[0].src = "{{ theme.url }}/img/photo.png";
         }
@@ -315,6 +287,9 @@
         $('#fullscreen').click(function() {
           gallery.toggleFullscreen();
         });
+
+        $('.icons').appendTo(this.$('container'));
+
         {% if settings.show_map and album.show_map %}
         this.bind('loadfinish', function(e) {
             init_map();

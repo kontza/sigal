@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2013-2014 - Simon Conseil
+# Copyright (c) 2013-2016 - Simon Conseil
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to
@@ -34,6 +34,7 @@ if not PY2:
     from http import server
     from urllib.parse import quote as url_quote
     import socketserver
+    import pickle
 else:
     text_type = unicode  # NOQA
     string_types = (str, unicode)  # NOQA
@@ -45,6 +46,11 @@ else:
     from urllib import quote as url_quote  # NOQA
     import SimpleHTTPServer as server  # NOQA
     import SocketServer as socketserver  # NOQA
+
+    try:
+        import cPickle as pickle
+    except:
+        import pickle
 
 
 class UnicodeMixin(object):

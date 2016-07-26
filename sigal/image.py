@@ -1,6 +1,6 @@
 # -*- coding:utf-8 -*-
 
-# Copyright (c) 2009-2014 - Simon Conseil
+# Copyright (c) 2009-2016 - Simon Conseil
 # Copyright (c) 2015 - François D.
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -32,8 +32,11 @@
 
 import logging
 import os
+import PIL
 import pilkit.processors
 import sys
+import warnings
+import fractions
 
 from copy import deepcopy
 from datetime import datetime
@@ -63,7 +66,7 @@ def generate_image(source, outname, settings, options=None):
 
     logger = logging.getLogger(__name__)
 
-    if settings['use_orig']:
+    if settings['use_orig'] or source.endswith('.gif'):
         utils.copy(source, outname, symlink=settings['orig_link'])
         return
 
@@ -156,7 +159,10 @@ def process_image(filepath, outpath, settings):
                                fit=settings['thumb_fit'], options=options)
     except Exception as e:
         logger.info('Failed to process: %r', e)
-        return Status.FAILURE
+        if logger.getEffectiveLevel() == logging.DEBUG:
+            raise
+        else:
+            return Status.FAILURE
 
     return Status.SUCCESS
 
@@ -179,13 +185,29 @@ def get_size(file_path):
 def get_exif_data(filename):
     """Return a dict with the raw EXIF data."""
 
+    logger = logging.getLogger(__name__)
+
+    if PIL.PILLOW_VERSION == '3.0.0':
+        warnings.warn('Pillow 3.0.0 is broken with EXIF data, consider using '
+                      'another version if you want to use EXIF data.')
+
     img = PILImage.open(filename)
-    exif = img._getexif() or {}
+    try:
+        exif = img._getexif() or {}
+    except ZeroDivisionError:
+        logger.warning('Failed to read EXIF data.')
+        return None
+
     data = {TAGS.get(tag, tag): value for tag, value in exif.items()}
 
     if 'GPSInfo' in data:
-        data['GPSInfo'] = {GPSTAGS.get(tag, tag): value
-                           for tag, value in data['GPSInfo'].items()}
+        try:
+            data['GPSInfo'] = {GPSTAGS.get(tag, tag): value
+                               for tag, value in data['GPSInfo'].items()}
+        except AttributeError:
+            logger = logging.getLogger(__name__)
+            logger.info('Failed to get GPS Info')
+            del data['GPSInfo']
     return data
 
 
@@ -206,12 +228,18 @@ def get_exif_tags(data):
 
     for tag in ('Model', 'Make', 'LensModel'):
         if tag in data:
-            simple[tag] = data[tag].strip()
+            if isinstance(data[tag], tuple):
+                simple[tag] = data[tag][0].strip()
+            else:
+                simple[tag] = data[tag].strip()
 
     if 'FNumber' in data:
         fnumber = data['FNumber']
         try:
             simple['fstop'] = float(fnumber[0]) / fnumber[1]
+        except IndexError:
+            # Pillow == 3.0
+            simple['fstop'] = float(fnumber[0])
         except Exception:
             logger.debug('Skipped invalid FNumber: %r', fnumber, exc_info=True)
 
@@ -219,26 +247,45 @@ def get_exif_tags(data):
         focal = data['FocalLength']
         try:
             simple['focal'] = round(float(focal[0]) / focal[1])
+        except IndexError:
+            # Pillow == 3.0
+            simple['focal'] = round(focal[0])
         except Exception:
             logger.debug('Skipped invalid FocalLength: %r', focal,
                          exc_info=True)
 
     if 'ExposureTime' in data:
-        if isinstance(data['ExposureTime'], tuple):
-            simple['exposure'] = '{0}/{1}'.format(*data['ExposureTime'])
-        elif isinstance(data['ExposureTime'], int):
-            simple['exposure'] = str(data['ExposureTime'])
+        exptime = data['ExposureTime']
+        if isinstance(exptime, tuple):
+            try:
+                simple['exposure'] = str(fractions.Fraction(exptime[0],
+                                                            exptime[1]))
+            except IndexError:
+                # Pillow == 3.0
+                simple['exposure'] = exptime[0]
+            except ZeroDivisionError:
+                logger.info('Invalid ExposureTime: %r', exptime)
+        elif isinstance(exptime, int):
+            simple['exposure'] = str(exptime)
         else:
-            logger.info('Unknown format for ExposureTime: %r',
-                        data['ExposureTime'])
+            logger.info('Unknown format for ExposureTime: %r', exptime)
 
-    if 'ISOSpeedRatings' in data:
-        simple['iso'] = data['ISOSpeedRatings']
+    if data.get('ISOSpeedRatings'):
+        if isinstance(data['ISOSpeedRatings'], tuple):
+            # Pillow == 3.0
+            simple['iso'] = data['ISOSpeedRatings'][0]
+        else:
+            simple['iso'] = data['ISOSpeedRatings']
 
     if 'DateTimeOriginal' in data:
         try:
             # Remove null bytes at the end if necessary
             date = data['DateTimeOriginal'].rsplit('\x00')[0]
+        except AttributeError:
+            # Pillow == 3.0
+            date = data['DateTimeOriginal'][0]
+
+        try:
             simple['dateobj'] = datetime.strptime(date, '%Y:%m:%d %H:%M:%S')
             dt = simple['dateobj'].strftime('%A, %d. %B %Y')
             simple['datetime'] = dt.decode('utf8') if compat.PY2 else dt

@@ -1,12 +1,14 @@
 # -*- coding:utf-8 -*-
 
 import locale
+import logging
 import os
 import pytest
 import datetime
 
 from os.path import join
 from sigal.gallery import Album, Media, Image, Video, Gallery
+from sigal.video import SubprocessException
 
 CURRENT_DIR = os.path.dirname(__file__)
 
@@ -15,7 +17,7 @@ REF = {
         'title': 'An example gallery',
         'name': 'dir1',
         'thumbnail': 'dir1/test1/thumbnails/11.tn.jpg',
-        'subdirs': ['test1', 'test2'],
+        'subdirs': ['test1', 'test2', 'test3'],
         'medias': [],
     },
     'dir1/test1': {
@@ -24,7 +26,8 @@ REF = {
         'thumbnail': 'test1/thumbnails/11.tn.jpg',
         'subdirs': [],
         'medias': ['11.jpg', 'archlinux-kiss-1024x640.png',
-                   'flickr_jerquiaga_2394751088_cc-by-nc.jpg'],
+                   'flickr_jerquiaga_2394751088_cc-by-nc.jpg',
+                   '50a1d0bc-763d-457e-b634-c87f16a64270.gif'],
     },
     'dir1/test2': {
         'title': 'test2',
@@ -32,6 +35,13 @@ REF = {
         'thumbnail': 'test2/thumbnails/21.tn.jpg',
         'subdirs': [],
         'medias': ['21.jpg', '22.jpg', 'archlinux-kiss-1024x640.png'],
+    },
+    'dir1/test3': {
+        'title': '01 First title alphabetically',
+        'name': 'test3',
+        'thumbnail': 'test3/thumbnails/3.tn.jpg',
+        'subdirs': [],
+        'medias': ['3.jpg'],
     },
     'dir2': {
         'title': 'Another example gallery with a very long name',
@@ -56,7 +66,7 @@ REF = {
         'thumbnail': ('video/thumbnails/'
                       'stallman software-freedom-day-low.tn.jpg'),
         'subdirs': [],
-        'medias': ['stallman software-freedom-day-low.webm']
+        'medias': ['stallman software-freedom-day-low.ogv']
     }
 }
 
@@ -133,41 +143,65 @@ def test_album(path, album, settings, tmpdir):
     # locale.setlocale(locale.LC_ALL, 'fr_FR')
     locale.setlocale(locale.LC_ALL, 'fr_FR.UTF-8')
 
-    gal = Gallery(settings, ncpu=1)
-    a = Album(path, settings, album['subdirs'], album['medias'], gal)
+    try:
+        gal = Gallery(settings, ncpu=1)
+        a = Album(path, settings, album['subdirs'], album['medias'], gal)
 
-    assert a.title == album['title']
-    assert a.name == album['name']
-    assert a.subdirs == album['subdirs']
-    assert a.thumbnail == album['thumbnail']
-    assert [m.filename for m in a.medias] == album['medias']
-    assert len(a) == len(album['medias'])
-
-    # restore locale back
-    locale.setlocale(locale.LC_ALL, old_locale)
-
-
-def test_album_medias(settings):
-    gal = Gallery(settings, ncpu=1)
-
-    album = REF['dir1/test1']
-    a = Album('dir1/test1', settings, album['subdirs'], album['medias'], gal)
-    assert list(im.filename for im in a.images) == album['medias']
-    assert list(a.videos) == []
-
-    album = REF['video']
-    a = Album('video', settings, album['subdirs'], album['medias'], gal)
-    assert list(im.filename for im in a.videos) == album['medias']
-    assert list(a.images) == []
+        assert a.title == album['title']
+        assert a.name == album['name']
+        assert a.subdirs == album['subdirs']
+        assert a.thumbnail == album['thumbnail']
+        if path == 'video':
+            assert list(a.images) == []
+            assert [m.filename for m in a.medias] == \
+                [album['medias'][0].replace('.ogv', '.webm')]
+        else:
+            assert list(a.videos) == []
+            assert [m.filename for m in a.medias] == album['medias']
+        assert len(a) == len(album['medias'])
+    finally:
+        # restore locale back
+        locale.setlocale(locale.LC_ALL, old_locale)
 
 
 def test_albums_sort(settings):
     gal = Gallery(settings, ncpu=1)
     album = REF['dir1']
+    subdirs = list(album['subdirs'])
+
+    settings['albums_sort_reverse'] = False
+    a = Album('dir1', settings, album['subdirs'], album['medias'], gal)
+    a.sort_subdirs('')
+    assert [alb.name for alb in a.albums] == subdirs
 
     settings['albums_sort_reverse'] = True
     a = Album('dir1', settings, album['subdirs'], album['medias'], gal)
-    assert [im.filename for im in a.images] == list(reversed(album['medias']))
+    a.sort_subdirs('')
+    assert [alb.name for alb in a.albums] == list(reversed(subdirs))
+
+    titles = [im.title for im in a.albums]
+    titles.sort()
+    settings['albums_sort_reverse'] = False
+    a = Album('dir1', settings, album['subdirs'], album['medias'], gal)
+    a.sort_subdirs('title')
+    assert [im.title for im in a.albums] == titles
+
+    settings['albums_sort_reverse'] = True
+    a = Album('dir1', settings, album['subdirs'], album['medias'], gal)
+    a.sort_subdirs('title')
+    assert [im.title for im in a.albums] == list(reversed(titles))
+
+    orders = ['01', '02', '03']
+    orders.sort()
+    settings['albums_sort_reverse'] = False
+    a = Album('dir1', settings, album['subdirs'], album['medias'], gal)
+    a.sort_subdirs('meta.order')
+    assert [d.meta['order'][0] for d in a.albums] == orders
+
+    settings['albums_sort_reverse'] = True
+    a = Album('dir1', settings, album['subdirs'], album['medias'], gal)
+    a.sort_subdirs('meta.order')
+    assert [d.meta['order'][0] for d in a.albums] == list(reversed(orders))
 
 
 def test_medias_sort(settings):
@@ -186,11 +220,19 @@ def test_medias_sort(settings):
     assert [im.filename for im in a.images] == ['22.jpg', '21.jpg',
                                                 'archlinux-kiss-1024x640.png']
 
+    settings['medias_sort_attr'] = 'meta.order'
+    settings['medias_sort_reverse'] = False
+    a = Album('dir1/test2', settings, album['subdirs'], album['medias'], gal)
+    a.sort_medias(settings['medias_sort_attr'])
+    assert [im.filename for im in a.images] == ['archlinux-kiss-1024x640.png', '21.jpg', '22.jpg']
+
 
 def test_gallery(settings, tmpdir):
     "Test the Gallery class."
 
     settings['destination'] = str(tmpdir)
+    settings['webm_options'] = ['-missing-option', 'foobar']
+
     gal = Gallery(settings, ncpu=1)
     gal.build()
 
@@ -201,6 +243,15 @@ def test_gallery(settings, tmpdir):
         html = f.read()
 
     assert '<title>Sigal test gallery</title>' in html
+
+    logger = logging.getLogger('sigal')
+    logger.setLevel(logging.DEBUG)
+    try:
+        gal = Gallery(settings, ncpu=1)
+        with pytest.raises(SubprocessException):
+            gal.build()
+    finally:
+        logger.setLevel(logging.INFO)
 
 
 def test_empty_dirs(settings):

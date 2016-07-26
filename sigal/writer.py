@@ -1,6 +1,6 @@
 # -*- coding:utf-8 -*-
 
-# Copyright (c) 2009-2014 - Simon Conseil
+# Copyright (c) 2009-2016 - Simon Conseil
 # Copyright (c)      2013 - Christophe-Marie Duquesne
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -65,7 +65,7 @@ class Writer(object):
                                                        'templates'))
 
         # setup jinja env
-        env_options = {'trim_blocks': True}
+        env_options = {'trim_blocks': True, 'autoescape': True}
         try:
             if tuple(int(x) for x in jinja2.__version__.split('.')) >= (2, 7):
                 env_options['lstrip_blocks'] = True

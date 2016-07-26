@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2011-2014 - Simon Conseil
+# Copyright (c) 2011-2016 - Simon Conseil
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to
@@ -24,6 +24,7 @@ import codecs
 import os
 import shutil
 from markdown import Markdown
+from markupsafe import Markup
 from subprocess import Popen, PIPE
 
 from . import compat
@@ -80,7 +81,8 @@ def read_markdown(filename):
     md = Markdown(extensions=['markdown.extensions.meta',
                               'markdown.extensions.tables'],
                   output_format='html5')
-    output = {'description': md.convert(text)}
+    # Mark HTML with Markup to prevent jinja2 autoescaping
+    output = {'description': Markup(md.convert(text))}
 
     try:
         meta = md.Meta.copy()
@@ -88,7 +90,10 @@ def read_markdown(filename):
         pass
     else:
         output['meta'] = meta
-        output['title'] = md.Meta.get('title', [''])[0]
+        try:
+            output['title'] = md.Meta['title'][0]
+        except KeyError:
+            pass
 
     return output
 

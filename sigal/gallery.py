@@ -1,6 +1,6 @@
 # -*- coding:utf-8 -*-
 
-# Copyright (c) 2009-2014 - Simon Conseil
+# Copyright (c) 2009-2016 - Simon Conseil
 # Copyright (c) 2013      - Christophe-Marie Duquesne
 # Copyright (c) 2014      - Jonas Kaufmann
 # Copyright (c) 2015      - François D.
@@ -29,7 +29,6 @@ import fnmatch
 import logging
 import multiprocessing
 import os
-import pickle
 import sys
 import zipfile
 
@@ -40,7 +39,7 @@ from itertools import cycle
 from os.path import isfile, join, splitext
 
 from . import image, video, signals
-from .compat import PY2, UnicodeMixin, strxfrm, url_quote, text_type
+from .compat import PY2, UnicodeMixin, strxfrm, url_quote, text_type, pickle
 from .image import process_image, get_exif_tags, get_exif_data, get_size
 from .settings import get_thumb
 from .utils import (Devnull, copy, check_or_create_dir, url_from_path,
@@ -105,8 +104,6 @@ class Media(UnicodeMixin):
             copy(self.src_path, join(orig_path, self.src_filename),
                  symlink=s['orig_link'])
             return url_from_path(join(s['orig_dir'], self.src_filename))
-        else:
-            return None
 
     @property
     def thumbnail(self):
@@ -148,7 +145,7 @@ class Image(Media):
     """Gather all informations on an image file."""
 
     type = 'image'
-    extensions = ('.jpg', '.jpeg', '.png')
+    extensions = ('.jpg', '.jpeg', '.png', '.gif')
 
     @cached_property
     def date(self):
@@ -164,10 +161,9 @@ class Image(Media):
         try:
             return (get_exif_data(self.src_path)
                     if self.ext in ('.jpg', '.jpeg') else None)
-        except (IOError, IndexError, TypeError, AttributeError):
+        except Exception:
             self.logger.warning(u'Could not read EXIF data from %s',
                                 self.src_path)
-            return None
 
     @cached_property
     def size(self):
@@ -189,14 +185,12 @@ class Video(Media):
 
     def __init__(self, filename, path, settings):
         super(Video, self).__init__(filename, path, settings)
-        (base, ext) = splitext(filename)
+        base, ext = splitext(filename)
         self.date = None
         self.src_filename = filename
         if not settings['use_orig'] or not is_valid_html5_video(ext):
             video_format = settings['video_format']
-
             ext = '.' + video_format
-
             self.filename = self.url = base + ext
             self.mime = get_mime(ext)
             self.dst_path = join(settings['destination'], path, base + ext)
@@ -228,6 +222,7 @@ class Album(UnicodeMixin):
         self.name = path.split(os.path.sep)[-1]
         self.gallery = gallery
         self.settings = settings
+        self.subdirs = dirnames
         self.output_file = settings['output_filename']
         self._thumbnail = None
 
@@ -246,10 +241,6 @@ class Album(UnicodeMixin):
 
         self.index_url = url_from_path(os.path.relpath(
             settings['destination'], self.dst_path)) + '/' + self.url_ext
-
-        # sort sub-albums
-        dirnames.sort(key=strxfrm, reverse=settings['albums_sort_reverse'])
-        self.subdirs = dirnames
 
         #: List of all medias in the album (:class:`~sigal.gallery.Image` and
         #: :class:`~sigal.gallery.Video`).
@@ -320,10 +311,32 @@ class Album(UnicodeMixin):
             self.orig_path = join(self.dst_path, self.settings['orig_dir'])
             check_or_create_dir(self.orig_path)
 
+    def sort_subdirs(self, albums_sort_attr):
+        if self.subdirs:
+            if albums_sort_attr:
+                root_path = self.path if self.path != '.' else ''
+                if albums_sort_attr.startswith("meta."):
+                    meta_key = albums_sort_attr.split(".", 1)[1]
+                    key = lambda s: strxfrm(
+                        self.gallery.albums[join(root_path, s)].meta.get(meta_key, [''])[0])
+                else:
+                    key = lambda s: strxfrm(getattr(
+                    self.gallery.albums[join(root_path, s)], albums_sort_attr))
+            else:
+                key = strxfrm
+
+            self.subdirs.sort(key=key,
+                              reverse=self.settings['albums_sort_reverse'])
+
+        signals.albums_sorted.send(self)
+
     def sort_medias(self, medias_sort_attr):
         if self.medias:
             if medias_sort_attr == 'date':
                 key = lambda s: s.date or datetime.now()
+            elif medias_sort_attr.startswith('meta.'):
+                meta_key = medias_sort_attr.split(".", 1)[1]
+                key = lambda s: strxfrm(s.meta.get(meta_key, [''])[0])
             else:
                 key = lambda s: strxfrm(getattr(s, medias_sort_attr))
 
@@ -397,7 +410,14 @@ class Album(UnicodeMixin):
 
             # else simply return the 1st media file
             if not self._thumbnail and self.medias:
-                self._thumbnail = join(self.name, self.medias[0].thumbnail)
+                for media in self.medias:
+                    if media.thumbnail is not None:
+                        self._thumbnail = join(self.name, media.thumbnail)
+                        break
+                else:
+                    self.logger.warning("No thumbnail found for %r", self)
+                    return None
+
                 self.logger.debug("Use the 1st image as thumbnail for %r : %s",
                                   self, self._thumbnail)
                 return url_from_path(self._thumbnail)
@@ -444,7 +464,6 @@ class Album(UnicodeMixin):
         """
         return any(image.has_location() for image in self.images)
 
-
     @property
     def zip(self):
         """Make a ZIP archive with all media files and return its path.
@@ -457,7 +476,7 @@ class Album(UnicodeMixin):
 
         if zip_gallery and len(self) > 0:
             archive_path = join(self.dst_path, zip_gallery)
-            archive = zipfile.ZipFile(archive_path, 'w')
+            archive = zipfile.ZipFile(archive_path, 'w', allowZip64=True)
             attr = ('src_path' if self.settings['zip_media_format'] == 'orig'
                     else 'dst_path')
 
@@ -471,8 +490,6 @@ class Album(UnicodeMixin):
             archive.close()
             self.logger.debug('Created ZIP archive %s', archive_path)
             return zip_gallery
-        else:
-            return None
 
 
 class Gallery(object):
@@ -534,6 +551,11 @@ class Gallery(object):
             else:
                 album.create_output_directories()
                 albums[relpath] = album
+
+        with progressbar(albums.values(), label="Sorting albums",
+                         file=self.progressbar_target) as progress_albums:
+            for album in progress_albums:
+                album.sort_subdirs(settings['albums_sort_attr'])
 
         with progressbar(albums.values(), label="Sorting media",
                          file=self.progressbar_target) as progress_albums:
