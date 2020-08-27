@@ -2,45 +2,47 @@
  Installation
 ==============
 
-Install the extension with one of the following commands::
-
-    $ easy_install sigal
-
-or alternatively if you have pip installed::
+With pip::
 
     $ pip install sigal
+
+Or to install with optional dependencies (listed below)::
+
+    $ pip install sigal\[all,tests\]
+
+To install the development version, see the :doc:`contribute`.
+
+Also, note that Sigal depends on `Pillow
+<https://github.com/python-pillow/Pillow>`_, which needs specific libraries when
+building from sources. See their `Installation documentation
+<https://pillow.readthedocs.io/en/stable/installation.html>`_ for more details.
 
 Dependencies
 ~~~~~~~~~~~~
 
+The mandatory dependencies are:
+
+- Blinker
 - Click
 - Jinja2
 - Pilkit
-- Python Imaging Library (PIL / Pillow, see below)
+- Pillow
 - Python Markdown
 
-PIL or Pillow ?
-~~~~~~~~~~~~~~~
+There are also a number of optional dependencies for the :doc:`plugins`,
+installable with the ``[all]`` marker:
 
-PIL_ is almost dead, the last release was in 2009. If possible you should
-prefer to use Pillow_, a fork of PIL which is actively developped, with
-packaging improvements, Python 3 compatibility, etc.
+- Brotli, zopfli (compress assets plugin)
+- Boto (upload to S3 plugin)
+- feedgenerator (feeds plugin)
 
-You can install Pillow with ``pip install Pillow``, preferably in a
-virtualenv_. To have JPG and PNG support, you must first install the
-developpement packages of libjpeg, freetype2 and zlib.
+Packages
+~~~~~~~~
 
-- For Debian/Ubuntu, this is possible with::
+Some packages are available for Linux distributions:
 
-    apt-get build-dep python-dev python-imaging
-
-  Debian/Sid users can use the experimental ``python-imaging`` package that is
-  built from Pillow source.
-
-- For Archlinux, there is a package_ for sigal in the AUR which already uses
-  Pillow.
-
-.. _PIL: http://www.pythonware.com/products/pil/
-.. _Pillow: https://github.com/python-imaging/Pillow
-.. _package: https://aur.archlinux.org/packages/sigal/
-.. _virtualenv: http://www.virtualenv.org/
+- `Archlinux <https://www.archlinux.org/packages/community/any/sigal/>`_
+- `Gentoo <https://packages.gentoo.org/packages/media-gfx/sigal>`_
+- `OpenSuse
+  <https://build.opensuse.org/package/show/openSUSE:Factory/python-sigal>`_
+- `NixOS <https://nixos.org/nixos/packages.html#sigal>`_

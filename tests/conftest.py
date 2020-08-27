@@ -1,10 +1,11 @@
-# -*- coding: utf-8 -*-
-
 import os
-import PIL
-import pytest
 import shutil
 
+import blinker
+import PIL
+import pytest
+
+from sigal import signals
 from sigal.settings import read_settings
 
 CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -24,5 +25,19 @@ def settings():
     return read_settings(os.path.join(CURRENT_DIR, 'sample', 'sigal.conf.py'))
 
 
+@pytest.fixture()
+def disconnect_signals():
+    # Reset plugins
+    yield None
+    for name in dir(signals):
+        if not name.startswith('_'):
+            try:
+                sig = getattr(signals, name)
+                if isinstance(sig, blinker.Signal):
+                    sig.receivers.clear()
+            except Exception:
+                pass
+
+
 def pytest_report_header(config):
-    return "project deps: Pillow-{}".format(PIL.PILLOW_VERSION)
+    return f"project deps: Pillow-{PIL.__version__}"

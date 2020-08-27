@@ -1,6 +1,6 @@
-# -*- coding: utf-8 -*-
-
 import os
+from pathlib import Path
+
 from sigal import utils
 
 CURRENT_DIR = os.path.dirname(__file__)
@@ -8,7 +8,7 @@ SAMPLE_DIR = os.path.join(CURRENT_DIR, 'sample')
 
 
 def test_copy(tmpdir):
-    filename = 'exo20101028-b-full.jpg'
+    filename = 'KeckObservatory20071020.jpg'
     src = os.path.join(SAMPLE_DIR, 'pictures', 'dir2', filename)
     dst = str(tmpdir.join(filename))
     utils.copy(src, dst)
@@ -21,11 +21,27 @@ def test_copy(tmpdir):
     assert os.path.islink(dst)
     assert os.readlink(dst) == src
 
-    filename = 'exo20101028-b-full.jpg'
+    filename = 'KeckObservatory20071020.jpg'
     src = os.path.join(SAMPLE_DIR, 'pictures', 'dir2', filename)
     utils.copy(src, dst, symlink=True)
     assert os.path.islink(dst)
     assert os.readlink(dst) == src
+
+    filename = 'KeckObservatory20071020.jpg'
+    src = os.path.join(SAMPLE_DIR, 'pictures', 'dir2', filename)
+    dst = str(tmpdir.join(filename))
+    utils.copy(src, dst, symlink=True, rellink=True)
+    assert os.path.islink(dst)
+    assert os.path.join(os.path.dirname(CURRENT_DIR)), os.readlink(dst) == src
+    # get absolute path of the current dir plus the relative dir
+
+    src = str(tmpdir.join('foo.txt'))
+    dst = str(tmpdir.join('bar.txt'))
+    p = Path(src)
+    p.touch()
+    p.chmod(0o444)
+    utils.copy(src, dst)
+    utils.copy(src, dst)
 
 
 def test_check_or_create_dir(tmpdir):
@@ -66,18 +82,10 @@ def test_read_markdown_empty_file(tmpdir):
     src.write("")
     m = utils.read_markdown(str(src))
     assert 'title' not in m
-    assert 'meta' not in m
+    # See https://github.com/Python-Markdown/markdown/pull/672
+    # Meta attributes should always be there
+    assert m['meta'] == {}
     assert m['description'] == ''
-
-
-def test_call_subprocess():
-    returncode, stdout, stderr = utils.call_subprocess(['echo', 'ok'])
-    assert returncode == 0
-    assert stdout == 'ok\n'
-    assert stderr == ''
-
-    # returncode, stdout, stderr = utils.call_subprocess(['/usr/bin/false'])
-    # assert returncode == 1
 
 
 def test_is_valid_html5_video():

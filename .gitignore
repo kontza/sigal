@@ -3,9 +3,11 @@
 *.pyc
 *_flymake
 .coverage
+.DS_Store
+.eggs/
+.pytest_cache/
 .ropeproject/
 .tox/
-nose.cfg
 MANIFEST
 _build/
 build/
@@ -13,6 +15,4 @@ dist/
 docs/_build
 htmlcov/
 output/
-.DS_Store
-venv
-tests/sample/pictures/Album_with__underscored_name
+tags

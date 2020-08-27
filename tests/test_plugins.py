@@ -1,15 +1,29 @@
 import os
-import pytest
-import sigal
+
+from sigal import init_plugins
 from sigal.gallery import Gallery
 
+CURRENT_DIR = os.path.dirname(__file__)
 
-def test_album_title_mangler(settings):
-    settings['plugins'].append('sigal.plugins.album_title_mangler')
-    sigal.init_plugins(settings)
-    gal = Gallery(settings, ncpu=1)
+
+def test_plugins(settings, tmpdir, disconnect_signals):
+
+    settings['destination'] = str(tmpdir)
+    if "sigal.plugins.nomedia" not in settings["plugins"]:
+        settings['plugins'] += ["sigal.plugins.nomedia"]
+    if "sigal.plugins.media_page" not in settings["plugins"]:
+        settings['plugins'] += ["sigal.plugins.media_page"]
+
+    init_plugins(settings)
+    gal = Gallery(settings)
     gal.build()
-    for key in gal.albums.keys():
-        album = gal.albums[key]
-        if album.path.startswith('Album'):
-            assert album.title == 'Album name-underscored'
+
+    out_html = os.path.join(settings['destination'],
+                            'dir2', 'KeckObservatory20071020.jpg.html')
+    assert os.path.isfile(out_html)
+
+    for path, dirs, files in os.walk(os.path.join(str(tmpdir), "nomedia")):
+        assert "ignore" not in path
+
+        for file in files:
+            assert "ignore" not in file

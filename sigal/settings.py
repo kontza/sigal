@@ -1,7 +1,6 @@
-# -*- coding:utf-8 -*-
-
-# Copyright (c) 2009-2016 - Simon Conseil
+# Copyright (c) 2009-2020 - Simon Conseil
 # Copyright (c) 2013      - Christophe-Marie Duquesne
+# Copyright (c) 2017      - Mate Lakat
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to
@@ -21,31 +20,33 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 
-import locale
 import logging
 import os
 from os.path import abspath, isabs, join, normpath
 from pprint import pformat
 
-from .compat import PY2, text_type
-
-
 _DEFAULT_CONFIG = {
     'albums_sort_attr': 'name',
     'albums_sort_reverse': False,
     'autorotate_images': True,
-    'colorbox_column_size': 4,
+    'colorbox_column_size': 3,
     'copy_exif_data': False,
+    'datetime_format': '%c',
     'destination': '_build',
     'files_to_copy': (),
     'google_analytics': '',
+    'google_tag_manager': '',
     'ignore_directories': [],
     'ignore_files': [],
+    'img_extensions': ['.jpg', '.jpeg', '.png', '.gif'],
     'img_processor': 'ResizeToFit',
     'img_size': (640, 480),
+    'img_format': None,
     'index_in_url': False,
     'jpg_options': {'quality': 85, 'optimize': True, 'progressive': True},
     'keep_orig': False,
+    'html_language': 'en',
+    'leaflet_provider': 'OpenStreetMap.Mapnik',
     'links': '',
     'locale': '',
     'make_thumbs': True,
@@ -54,22 +55,26 @@ _DEFAULT_CONFIG = {
     'mp4_options': ['-crf', '23', '-strict', '-2'],
     'orig_dir': 'original',
     'orig_link': False,
+    'rel_link': False,
     'output_filename': 'index.html',
     'piwik': {'tracker_url': '', 'site_id': 0},
     'plugin_paths': [],
     'plugins': [],
+    'site_logo': '',
     'show_map': False,
     'source': '',
     'theme': 'colorbox',
     'thumb_dir': 'thumbnails',
     'thumb_fit': True,
+    'thumb_fit_centering': (0.5, 0.5),
     'thumb_prefix': '',
     'thumb_size': (200, 150),
     'thumb_suffix': '',
     'thumb_video_delay': '0',
     'title': '',
-    'use_assets_cdn': True,
     'use_orig': False,
+    'video_converter': 'ffmpeg',
+    'video_extensions': ['.mov', '.avi', '.mp4', '.webm', '.ogv', '.3gp'],
     'video_format': 'webm',
     'video_size': (480, 360),
     'watermark': '',
@@ -81,7 +86,7 @@ _DEFAULT_CONFIG = {
 }
 
 
-class Status(object):
+class Status:
     SUCCESS = 0
     FAILURE = 1
 
@@ -104,8 +109,7 @@ def get_thumb(settings, filename):
     path, filen = os.path.split(filename)
     name, ext = os.path.splitext(filen)
 
-    # FIXME: replace this list with Video.extensions
-    if ext.lower() in ('.mov', '.avi', '.mp4', '.webm', '.ogv'):
+    if ext.lower() in settings['video_extensions']:
         ext = '.jpg'
     return join(path, settings['thumb_dir'], settings['thumb_prefix'] +
                 name + settings['thumb_suffix'] + ext)
@@ -138,20 +142,11 @@ def read_settings(filename=None):
                                    'templates')):
             paths.append('theme')
 
-        enc = locale.getpreferredencoding() if PY2 else None
-
         for p in paths:
-            # paths must to be unicode strings so that os.walk will return
-            # unicode dirnames and filenames
-            if PY2 and isinstance(settings[p], str):
-                settings[p] = settings[p].decode(enc)
             path = settings[p]
             if path and not isabs(path):
                 settings[p] = abspath(normpath(join(settings_path, path)))
                 logger.debug("Rewrite %s : %s -> %s", p, path, settings[p])
-
-        if settings['title'] and not isinstance(settings['title'], text_type):
-            settings['title'] = settings['title'].decode('utf8')
 
     for key in ('img_size', 'thumb_size', 'video_size'):
         w, h = settings[key]

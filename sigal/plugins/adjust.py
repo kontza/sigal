@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 """Plugin which adjust the image after resizing.
 
 Based on pilkit's Adjust_ processor.
@@ -8,16 +6,19 @@ Based on pilkit's Adjust_ processor.
 
 Settings::
 
-    adjust_options = {'color': 1.0,
-                      'brightness': 1.0,
-                      'contrast': 1.0,
-                      'sharpness': 1.0}
+    adjust_options = {
+        'color': 1.0,
+        'brightness': 1.0,
+        'contrast': 1.0,
+        'sharpness': 1.0
+    }
 
 """
 
 import logging
-from sigal import signals
+
 from pilkit.processors import Adjust
+from sigal import signals
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,6 @@
-# -*- coding:utf-8 -*-
-
-# Copyright (c) 2009-2016 - Simon Conseil
+# Copyright (c) 2009-2020 - Simon Conseil
 # Copyright (c)      2013 - Christophe-Marie Duquesne
+# Copyright (c)      2018 - Edwin Steele
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to
@@ -21,29 +20,26 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 
-from __future__ import absolute_import
-
-import codecs
-import jinja2
+import imp
 import logging
 import os
 import sys
-
+import types
 from distutils.dir_util import copy_tree
-from jinja2 import Environment, FileSystemLoader, ChoiceLoader, PrefixLoader
+
+import jinja2
+from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
 from jinja2.exceptions import TemplateNotFound
 
-from .pkgmeta import __url__ as sigal_link
+from . import signals
 from .utils import url_from_path
 
 THEMES_PATH = os.path.normpath(os.path.join(
     os.path.abspath(os.path.dirname(__file__)), 'themes'))
 
 
-class Writer(object):
-    """Generate html pages for each directory of images."""
-
-    template_file = 'index.html'
+class AbstractWriter:
+    template_file = None
 
     def __init__(self, settings, index_title=''):
         self.settings = settings
@@ -81,10 +77,19 @@ class Writer(object):
             **env_options
         )
 
+        # handle optional filters.py
+        filters_py = os.path.join(self.theme, 'filters.py')
+        if os.path.exists(filters_py):
+            mod = imp.load_source('filters', filters_py)
+            for name in dir(mod):
+                if isinstance(getattr(mod, name), types.FunctionType):
+                    env.filters[name] = getattr(mod, name)
+
         try:
             self.template = env.get_template(self.template_file)
         except TemplateNotFound:
-            self.logger.error('The index.html template was not found.')
+            self.logger.error('The template %s was not found in template folder %s.',
+                              self.template_file, theme_relpath)
             sys.exit(1)
 
         # Copy the theme files in the output dir
@@ -94,6 +99,7 @@ class Writer(object):
     def generate_context(self, album):
         """Generate the context dict for the given path."""
 
+        from . import __url__ as sigal_link
         self.logger.info("Output album : %r", album)
         return {
             'album': album,
@@ -107,9 +113,20 @@ class Writer(object):
 
     def write(self, album):
         """Generate the HTML page and save it."""
-
-        page = self.template.render(**self.generate_context(album))
+        context = self.generate_context(album)
+        signals.before_render.send(context)
+        page = self.template.render(**context)
         output_file = os.path.join(album.dst_path, album.output_file)
 
-        with codecs.open(output_file, 'w', 'utf-8') as f:
+        with open(output_file, 'w', encoding='utf-8') as f:
             f.write(page)
+
+
+class AlbumListPageWriter(AbstractWriter):
+    """Generate an html page for a directory of albums"""
+    template_file = "album_list.html"
+
+
+class AlbumPageWriter(AbstractWriter):
+    """Generate html pages for a directory of images."""
+    template_file = "album.html"

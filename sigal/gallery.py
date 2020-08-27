@@ -1,9 +1,9 @@
-# -*- coding:utf-8 -*-
-
-# Copyright (c) 2009-2016 - Simon Conseil
+# Copyright (c) 2009-2020 - Simon Conseil
 # Copyright (c) 2013      - Christophe-Marie Duquesne
 # Copyright (c) 2014      - Jonas Kaufmann
 # Copyright (c) 2015      - François D.
+# Copyright (c) 2017      - Mate Lakat
+# Copyright (c) 2018      - Edwin Steele
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to
@@ -23,52 +23,56 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 
-from __future__ import absolute_import, print_function
-
 import fnmatch
+import locale
 import logging
 import multiprocessing
 import os
+import pickle
+import random
 import sys
-import zipfile
-
-from click import progressbar, get_terminal_size
 from collections import defaultdict
 from datetime import datetime
 from itertools import cycle
 from os.path import isfile, join, splitext
+from urllib.parse import quote as url_quote
 
-from . import image, video, signals
-from .compat import PY2, UnicodeMixin, strxfrm, url_quote, text_type, pickle
-from .image import process_image, get_exif_tags, get_exif_data, get_size
+from click import get_terminal_size, progressbar
+from natsort import natsort_keygen, ns
+
+from . import image, signals, video
+from .image import get_exif_tags, get_image_metadata, get_size, process_image
 from .settings import get_thumb
-from .utils import (Devnull, copy, check_or_create_dir, url_from_path,
-                    read_markdown, cached_property, is_valid_html5_video,
-                    get_mime)
+from .utils import (Devnull, cached_property, check_or_create_dir, copy,
+                    get_mime, is_valid_html5_video, read_markdown,
+                    url_from_path)
 from .video import process_video
-from .writer import Writer
+from .writer import AlbumListPageWriter, AlbumPageWriter
 
 
-class Media(UnicodeMixin):
+class Media:
     """Base Class for media files.
 
     Attributes:
 
-    - ``type``: ``"image"`` or ``"video"``.
-    - ``filename``: Filename of the resized image.
-    - ``thumbnail``: Location of the corresponding thumbnail image.
-    - ``big``: If not None, location of the unmodified image.
-    - ``exif``: If not None contains a dict with the most common tags. For more
-        information, see :ref:`simple-exif-data`.
-    - ``raw_exif``: If not ``None``, it contains the raw EXIF tags.
+    :var Media.type: ``"image"`` or ``"video"``.
+    :var Media.filename: Filename of the resized image.
+    :var Media.thumbnail: Location of the corresponding thumbnail image.
+    :var Media.big: If not None, location of the unmodified image.
+    :var Media.big_url: If not None, url of the unmodified image.
 
     """
 
     type = ''
-    extensions = ()
+    """Type of media, e.g. ``"image"`` or ``"video"``."""
 
     def __init__(self, filename, path, settings):
-        self.src_filename = self.filename = self.url = filename
+        self.filename = filename
+        """Filename of the resized image."""
+
+        self.src_filename = filename
+        """Filename of the resized image."""
+
         self.path = path
         self.settings = settings
         self.ext = os.path.splitext(filename)[1].lower()
@@ -80,14 +84,25 @@ class Media(UnicodeMixin):
         self.thumb_path = join(settings['destination'], path, self.thumb_name)
 
         self.logger = logging.getLogger(__name__)
+
+        self.file_metadata = None
         self._get_metadata()
+
+        # default: title is the filename
+        if not self.title:
+            self.title = self.filename
         signals.media_initialized.send(self)
 
     def __repr__(self):
-        return "<%s>(%r)" % (self.__class__.__name__, str(self))
+        return "<{}>({!r})".format(self.__class__.__name__, str(self))
 
-    def __unicode__(self):
+    def __str__(self):
         return join(self.path, self.filename)
+
+    @property
+    def url(self):
+        """URL of the media."""
+        return url_from_path(self.filename)
 
     @property
     def big(self):
@@ -101,27 +116,38 @@ class Media(UnicodeMixin):
                 return self.filename
             orig_path = join(s['destination'], self.path, s['orig_dir'])
             check_or_create_dir(orig_path)
-            copy(self.src_path, join(orig_path, self.src_filename),
-                 symlink=s['orig_link'])
-            return url_from_path(join(s['orig_dir'], self.src_filename))
+            big_path = join(orig_path, self.src_filename)
+            if not isfile(big_path):
+                copy(self.src_path, big_path, symlink=s['orig_link'],
+                     rellink=self.settings['rel_link'])
+            return join(s['orig_dir'], self.src_filename)
+
+    @property
+    def big_url(self):
+        """URL of the original media."""
+        if self.big is not None:
+            return url_from_path(self.big)
 
     @property
     def thumbnail(self):
         """Path to the thumbnail image (relative to the album directory)."""
 
-        if not os.path.isfile(self.thumb_path):
-            # if thumbnail is missing (if settings['make_thumbs'] is False)
-            if self.type == 'image':
-                generator = image.generate_thumbnail
-            elif self.type == 'video':
-                generator = video.generate_thumbnail
-
+        if not isfile(self.thumb_path):
             self.logger.debug('Generating thumbnail for %r', self)
+            path = (self.dst_path if os.path.exists(self.dst_path)
+                    else self.src_path)
             try:
-                generator(self.src_path, self.thumb_path,
-                          self.settings['thumb_size'],
-                          self.settings['thumb_video_delay'],
-                          fit=self.settings['thumb_fit'])
+                # if thumbnail is missing (if settings['make_thumbs'] is False)
+                s = self.settings
+                if self.type == 'image':
+                    image.generate_thumbnail(
+                        path, self.thumb_path, s['thumb_size'],
+                        fit=s['thumb_fit'])
+                elif self.type == 'video':
+                    video.generate_thumbnail(
+                        path, self.thumb_path, s['thumb_size'],
+                        s['thumb_video_delay'], fit=s['thumb_fit'],
+                        converter=s['video_converter'])
             except Exception as e:
                 self.logger.error('Failed to generate thumbnail ({0}/{1}): %s'.
                                   format(self.path, self.src_filename), e)
@@ -129,10 +155,16 @@ class Media(UnicodeMixin):
         return url_from_path(self.thumb_name)
 
     def _get_metadata(self):
-        """ Get image metadata from filename.md: title, description, meta."""
+        """Get image metadata from filename.md: title, description, meta."""
+
         self.description = ''
-        self.meta = {}
+        """Description extracted from the Markdown <imagename>.md file."""
+
         self.title = ''
+        """Title extracted from the Markdown <imagename>.md file."""
+
+        self.meta = {}
+        """Other metadata extracted from the Markdown <imagename>.md file."""
 
         descfile = splitext(self.src_path)[0] + '.md'
         if isfile(descfile):
@@ -140,40 +172,66 @@ class Media(UnicodeMixin):
             for key, val in meta.items():
                 setattr(self, key, val)
 
+    def _get_file_date(self):
+        stat = os.stat(self.src_path)
+        return datetime.fromtimestamp(stat.st_mtime)
+
 
 class Image(Media):
     """Gather all informations on an image file."""
 
     type = 'image'
-    extensions = ('.jpg', '.jpeg', '.png', '.gif')
 
     @cached_property
     def date(self):
-        return self.exif and self.exif.get('dateobj', None) or None
+        """The date from the EXIF DateTimeOriginal metadata if available, or
+        from the file date."""
+        return (self.exif and self.exif.get('dateobj', None) or
+                self._get_file_date())
 
     @cached_property
     def exif(self):
-        return (get_exif_tags(self.raw_exif)
+        """If not `None` contains a dict with the most common tags. For more
+        information, see :ref:`simple-exif-data`.
+        """
+        datetime_format = self.settings['datetime_format']
+        return (get_exif_tags(self.raw_exif, datetime_format=datetime_format)
                 if self.raw_exif and self.ext in ('.jpg', '.jpeg') else None)
+
+    def _get_metadata(self):
+        super()._get_metadata()
+        self.file_metadata = get_image_metadata(self.src_path)
+
+        # If a title or description hasn't been obtained by other means, look
+        #  for the information in IPTC fields
+        if self.title and self.description:
+            # Nothing to do - we already have title and description
+            return
+
+        iptc_data = self.file_metadata['iptc']
+        if not self.title and iptc_data.get('title'):
+            self.title = iptc_data['title']
+        if not self.description and iptc_data.get('description'):
+            self.description = iptc_data['description']
 
     @cached_property
     def raw_exif(self):
-        try:
-            return (get_exif_data(self.src_path)
-                    if self.ext in ('.jpg', '.jpeg') else None)
-        except Exception:
-            self.logger.warning(u'Could not read EXIF data from %s',
-                                self.src_path)
+        """If not `None`, contains the raw EXIF tags."""
+        if self.ext in ('.jpg', '.jpeg'):
+            return self.file_metadata['exif']
 
     @cached_property
     def size(self):
+        """The dimensions of the resized image."""
         return get_size(self.dst_path)
 
     @cached_property
     def thumb_size(self):
+        """The dimensions of the thumbnail image."""
         return get_size(self.thumb_path)
 
     def has_location(self):
+        """True if location information is available for EXIF GPSInfo."""
         return self.exif is not None and 'gps' in self.exif
 
 
@@ -181,34 +239,33 @@ class Video(Media):
     """Gather all informations on a video file."""
 
     type = 'video'
-    extensions = ('.mov', '.avi', '.mp4', '.webm', '.ogv')
 
     def __init__(self, filename, path, settings):
-        super(Video, self).__init__(filename, path, settings)
+        super().__init__(filename, path, settings)
         base, ext = splitext(filename)
-        self.date = None
         self.src_filename = filename
+        self.date = self._get_file_date()
         if not settings['use_orig'] or not is_valid_html5_video(ext):
             video_format = settings['video_format']
             ext = '.' + video_format
-            self.filename = self.url = base + ext
+            self.filename = base + ext
             self.mime = get_mime(ext)
             self.dst_path = join(settings['destination'], path, base + ext)
         else:
             self.mime = get_mime(ext)
 
 
-class Album(UnicodeMixin):
+class Album:
     """Gather all informations on an album.
 
     Attributes:
 
     :var description_file: Name of the Markdown file which gives information
         on an album
-    :ivar index_url: URL to the index page.
-    :ivar output_file: Name of the output HTML file
-    :ivar meta: Meta data from the Markdown file.
-    :ivar description: description from the Markdown file.
+    :var index_url: URL to the index page.
+    :var output_file: Name of the output HTML file
+    :var meta: Meta data from the Markdown file.
+    :var description: description from the Markdown file.
 
     For details how to annotate your albums with meta data, see
     :doc:`album_information`.
@@ -249,9 +306,9 @@ class Album(UnicodeMixin):
 
         for f in filenames:
             ext = splitext(f)[1]
-            if ext.lower() in Image.extensions:
+            if ext.lower() in settings['img_extensions']:
                 media = Image(f, self.path, settings)
-            elif ext.lower() in Video.extensions:
+            elif ext.lower() in settings['video_extensions']:
                 media = Video(f, self.path, settings)
             else:
                 continue
@@ -262,12 +319,12 @@ class Album(UnicodeMixin):
         signals.album_initialized.send(self)
 
     def __repr__(self):
-        return "<%s>(path=%r, title=%r)" % (self.__class__.__name__, self.path,
-                                            self.title)
+        return "<{}>(path={!r}, title={!r})".format(
+            self.__class__.__name__, self.path, self.title)
 
-    def __unicode__(self):
-        return (u"{} : ".format(self.path) +
-                ', '.join("{} {}s".format(count, _type)
+    def __str__(self):
+        return (f'{self.path} : ' +
+                ', '.join(f'{count} {_type}s'
                           for _type, count in self.medias_count.items()))
 
     def __len__(self):
@@ -317,13 +374,15 @@ class Album(UnicodeMixin):
                 root_path = self.path if self.path != '.' else ''
                 if albums_sort_attr.startswith("meta."):
                     meta_key = albums_sort_attr.split(".", 1)[1]
-                    key = lambda s: strxfrm(
-                        self.gallery.albums[join(root_path, s)].meta.get(meta_key, [''])[0])
+                    key = natsort_keygen(key=lambda s:
+                        self.gallery.albums[join(root_path, s)].meta.get(meta_key, [''])[0],
+                        alg=ns.LOCALE)
                 else:
-                    key = lambda s: strxfrm(getattr(
-                    self.gallery.albums[join(root_path, s)], albums_sort_attr))
+                    key = natsort_keygen(key=lambda s:
+                        getattr(self.gallery.albums[join(root_path, s)], albums_sort_attr),
+                        alg=ns.LOCALE)
             else:
-                key = strxfrm
+                key = natsort_keygen(alg=ns.LOCALE)
 
             self.subdirs.sort(key=key,
                               reverse=self.settings['albums_sort_reverse'])
@@ -336,9 +395,11 @@ class Album(UnicodeMixin):
                 key = lambda s: s.date or datetime.now()
             elif medias_sort_attr.startswith('meta.'):
                 meta_key = medias_sort_attr.split(".", 1)[1]
-                key = lambda s: strxfrm(s.meta.get(meta_key, [''])[0])
+                key = natsort_keygen(key=lambda s: s.meta.get(meta_key, [''])[0],
+                                    alg=ns.LOCALE)
             else:
-                key = lambda s: strxfrm(getattr(s, medias_sort_attr))
+                key = natsort_keygen(key=lambda s: getattr(s, medias_sort_attr),
+                                    alg=ns.LOCALE)
 
             self.medias.sort(key=key,
                              reverse=self.settings['medias_sort_reverse'])
@@ -380,39 +441,41 @@ class Album(UnicodeMixin):
 
         if self._thumbnail:
             # stop if it is already set
-            return url_from_path(self._thumbnail)
+            return self._thumbnail
 
         # Test the thumbnail from the Markdown file.
         thumbnail = self.meta.get('thumbnail', [''])[0]
 
         if thumbnail and isfile(join(self.src_path, thumbnail)):
-            self._thumbnail = join(self.name, get_thumb(self.settings,
-                                                        thumbnail))
+            self._thumbnail = url_from_path(join(
+                self.name, get_thumb(self.settings, thumbnail)))
             self.logger.debug("Thumbnail for %r : %s", self, self._thumbnail)
-            return url_from_path(self._thumbnail)
+            return self._thumbnail
         else:
             # find and return the first landscape image
             for f in self.medias:
                 ext = splitext(f.filename)[1]
-                if ext.lower() in Image.extensions:
+                if ext.lower() in self.settings['img_extensions']:
                     # Use f.size if available as it is quicker (in cache), but
                     # fallback to the size of src_path if dst_path is missing
                     size = f.size
                     if size is None:
-                        size = get_size(f.src_path)
+                        size = f.file_metadata['size']
 
                     if size['width'] > size['height']:
-                        self._thumbnail = join(self.name, f.thumbnail)
+                        self._thumbnail = (url_quote(self.name) + '/' +
+                                           f.thumbnail)
                         self.logger.debug(
-                            "Use 1st landscape image as thumbnail for %r :"
-                            " %s", self, self._thumbnail)
-                        return url_from_path(self._thumbnail)
+                            "Use 1st landscape image as thumbnail for %r : %s",
+                            self, self._thumbnail)
+                        return self._thumbnail
 
             # else simply return the 1st media file
             if not self._thumbnail and self.medias:
                 for media in self.medias:
                     if media.thumbnail is not None:
-                        self._thumbnail = join(self.name, media.thumbnail)
+                        self._thumbnail = (url_quote(self.name) + '/' +
+                                           media.thumbnail)
                         break
                 else:
                     self.logger.warning("No thumbnail found for %r", self)
@@ -420,20 +483,29 @@ class Album(UnicodeMixin):
 
                 self.logger.debug("Use the 1st image as thumbnail for %r : %s",
                                   self, self._thumbnail)
-                return url_from_path(self._thumbnail)
+                return self._thumbnail
 
             # use the thumbnail of their sub-directories
             if not self._thumbnail:
                 for path, album in self.gallery.get_albums(self.path):
                     if album.thumbnail:
-                        self._thumbnail = join(self.name, album.thumbnail)
+                        self._thumbnail = (url_quote(self.name) + '/' +
+                                           album.thumbnail)
                         self.logger.debug(
                             "Using thumbnail from sub-directory for %r : %s",
                             self, self._thumbnail)
-                        return url_from_path(self._thumbnail)
+                        return self._thumbnail
 
         self.logger.error('Thumbnail not found for %r', self)
         return None
+
+    @property
+    def random_thumbnail(self):
+        try:
+            return url_from_path(join(self.name,
+                                      random.choice(self.medias).thumbnail))
+        except IndexError:
+            return self.thumbnail
 
     @property
     def breadcrumb(self):
@@ -464,37 +536,17 @@ class Album(UnicodeMixin):
         """
         return any(image.has_location() for image in self.images)
 
-    @property
+    @cached_property
     def zip(self):
-        """Make a ZIP archive with all media files and return its path.
-
-        If the ``zip_gallery`` setting is set,it contains the location of a zip
-        archive with all original images of the corresponding directory.
-
+        """Placeholder ZIP method.
+        The ZIP logic is controlled by the zip_gallery plugin
         """
-        zip_gallery = self.settings['zip_gallery']
-
-        if zip_gallery and len(self) > 0:
-            archive_path = join(self.dst_path, zip_gallery)
-            archive = zipfile.ZipFile(archive_path, 'w', allowZip64=True)
-            attr = ('src_path' if self.settings['zip_media_format'] == 'orig'
-                    else 'dst_path')
-
-            for p in self:
-                path = getattr(p, attr)
-                try:
-                    archive.write(path, os.path.split(path)[1])
-                except OSError as e:
-                    self.logger.warn('Failed to add %s to the ZIP: %s', p, e)
-
-            archive.close()
-            self.logger.debug('Created ZIP archive %s', archive_path)
-            return zip_gallery
+        return None
 
 
-class Gallery(object):
+class Gallery:
 
-    def __init__(self, settings, ncpu=None):
+    def __init__(self, settings, ncpu=None, quiet=False):
         self.settings = settings
         self.logger = logging.getLogger(__name__)
         self.stats = defaultdict(int)
@@ -509,14 +561,14 @@ class Gallery(object):
         ignore_files = settings['ignore_files']
 
         progressChars = cycle(["/", "-", "\\", "|"])
-        if self.logger.getEffectiveLevel() >= logging.WARNING:
-            self.progressbar_target = None
-        else:
-            self.progressbar_target = Devnull()
+        show_progress = (not quiet and
+                         self.logger.getEffectiveLevel() >= logging.WARNING and
+                         os.isatty(sys.stdout.fileno()))
+        self.progressbar_target = None if show_progress else Devnull()
 
         for path, dirs, files in os.walk(src_path, followlinks=True,
                                          topdown=False):
-            if self.logger.getEffectiveLevel() >= logging.WARNING:
+            if show_progress:
                 print("\rCollecting albums " + next(progressChars), end="")
             relpath = os.path.relpath(path, src_path)
 
@@ -552,12 +604,15 @@ class Gallery(object):
                 album.create_output_directories()
                 albums[relpath] = album
 
-        with progressbar(albums.values(), label="Sorting albums",
+        if show_progress:
+            print("\rCollecting albums, done.")
+
+        with progressbar(albums.values(), label="%16s" % "Sorting albums",
                          file=self.progressbar_target) as progress_albums:
             for album in progress_albums:
                 album.sort_subdirs(settings['albums_sort_attr'])
 
-        with progressbar(albums.values(), label="Sorting media",
+        with progressbar(albums.values(), label="%16s" % "Sorting media",
                          file=self.progressbar_target) as progress_albums:
             for album in progress_albums:
                 album.sort_medias(settings['medias_sort_attr'])
@@ -611,10 +666,7 @@ class Gallery(object):
             # 63 is the total length of progressbar, label, percentage, etc
             available_length = get_terminal_size()[0] - 64
             if x and available_length > 10:
-                text = text_type(x.name)[:available_length]
-                if PY2:
-                    text = text.encode('utf-8')
-                return text
+                return x.name[:available_length]
             else:
                 return ""
 
@@ -638,7 +690,7 @@ class Gallery(object):
                     for res in self.pool.imap_unordered(worker, media_list):
                         if res:
                             failed_files.append(res)
-                        next(bar)
+                        bar.update(1)
                 self.pool.close()
                 self.pool.join()
             except KeyboardInterrupt:
@@ -660,12 +712,29 @@ class Gallery(object):
 
         if failed_files:
             self.remove_files(failed_files)
-        print('')
 
         if self.settings['write_html']:
-            writer = Writer(self.settings, index_title=self.title)
-            for album in self.albums.values():
-                writer.write(album)
+            album_writer = AlbumPageWriter(self.settings,
+                                           index_title=self.title)
+            album_list_writer = AlbumListPageWriter(self.settings,
+                                                    index_title=self.title)
+            with progressbar(self.albums.values(),
+                             label="%16s" % "Writing files",
+                             item_show_func=log_func, show_eta=False,
+                             file=self.progressbar_target) as albums:
+                for album in albums:
+                    if album.albums:
+                        if album.medias:
+                            self.logger.warning(
+                                "Album %s contains sub-albums and images. "
+                                "Please move images to their own sub-album. "
+                                "Images in album %s will not be visible.",
+                                album.title, album.title
+                            )
+                        album_list_writer.write(album)
+                    else:
+                        album_writer.write(album)
+        print('')
 
         signals.gallery_build.send(self)
 
@@ -679,8 +748,8 @@ class Gallery(object):
                     self.stats[f.type + '_failed'] += 1
                     album.medias.remove(f)
                     break
-        self.logger.error('You can run sigal in verbose (--verbose) or debug '
-                          '(--debug) mode to get more details.')
+        self.logger.error('You can run "sigal build" in verbose (--verbose) or'
+                          ' debug (--debug) mode to get more details.')
 
     def process_dir(self, album, force=False):
         """Process a list of images in a directory."""

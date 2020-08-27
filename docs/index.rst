@@ -13,5 +13,7 @@ Documentation
    image_information
    themes
    plugins
+   faq
    contribute
+   license
    changelog

@@ -1,6 +1,4 @@
-# -*- coding:utf-8 -*-
-
-# Copyright (c) 2009-2016 - Simon Conseil
+# Copyright (c) 2009-2020 - Simon Conseil
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to
@@ -20,25 +18,31 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 
-from __future__ import absolute_import, print_function
-
-import click
 import importlib
-import io
 import locale
 import logging
 import os
+import socketserver
 import sys
 import time
+from http import server
 
+import click
 from click import argument, option
+from pkg_resources import DistributionNotFound, get_distribution
 
-from .compat import server, socketserver, string_types
 from .gallery import Gallery
 from .log import init_logging
-from .pkgmeta import __version__
 from .settings import read_settings
 from .utils import copy
+
+try:
+    __version__ = get_distribution(__name__).version
+except DistributionNotFound:
+    # package is not installed
+    __version__ = None
+
+__url__ = 'https://github.com/saimn/sigal'
 
 _DEFAULT_CONFIG_FILE = 'sigal.conf.py'
 
@@ -52,7 +56,7 @@ def main():
     resize images, create thumbnails with some options, generate html pages.
 
     """
-    pass
+    pass  # pragma: no cover
 
 
 @main.command()
@@ -68,9 +72,9 @@ def init(path):
     from pkg_resources import resource_string
     conf = resource_string(__name__, 'templates/sigal.conf.py')
 
-    with io.open(path, 'w', encoding='utf-8') as f:
+    with open(path, 'w', encoding='utf-8') as f:
         f.write(conf.decode('utf8'))
-    print("Sample config file created: {}".format(path))
+    print(f"Sample config file created: {path}")
 
 
 @main.command()
@@ -80,23 +84,35 @@ def init(path):
         help="Force the reprocessing of existing images")
 @option('-v', '--verbose', is_flag=True, help="Show all messages")
 @option('-d', '--debug', is_flag=True,
-        help="Show all message, including debug messages")
+        help="Show all messages, including debug messages. Also raise "
+        "exception if an error happen when processing files.")
+@option('-q', '--quiet', is_flag=True, help="Show only error messages")
 @option('-c', '--config', default=_DEFAULT_CONFIG_FILE, show_default=True,
         help="Configuration file")
 @option('-t', '--theme', help="Specify a theme directory, or a theme name for "
         "the themes included with Sigal")
 @option('--title', help="Title of the gallery (overrides the title setting.")
 @option('-n', '--ncpu', help="Number of cpu to use (default: all)")
-def build(source, destination, debug, verbose, force, config, theme, title,
-          ncpu):
+def build(source, destination, debug, verbose, quiet, force, config, theme,
+          title, ncpu):
     """Run sigal to process a directory.
 
     If provided, 'source', 'destination' and 'theme' will override the
     corresponding values from the settings file.
 
     """
-    level = ((debug and logging.DEBUG) or (verbose and logging.INFO) or
-             logging.WARNING)
+    if sum([debug, verbose, quiet]) > 1:
+        sys.exit('Only one option of debug, verbose and quiet should be used')
+
+    if debug:
+        level = logging.DEBUG
+    elif verbose:
+        level = logging.INFO
+    elif quiet:
+        level = logging.ERROR
+    else:
+        level = logging.WARNING
+
     init_logging(__name__, level=level)
     logger = logging.getLogger(__name__)
 
@@ -138,7 +154,7 @@ def build(source, destination, debug, verbose, force, config, theme, title,
     locale.setlocale(locale.LC_ALL, settings['locale'])
     init_plugins(settings)
 
-    gal = Gallery(settings, ncpu=ncpu)
+    gal = Gallery(settings, ncpu=ncpu, quiet=quiet)
     gal.build(force=force)
 
     # copy extra files
@@ -146,7 +162,7 @@ def build(source, destination, debug, verbose, force, config, theme, title,
         src = os.path.join(settings['source'], src)
         dst = os.path.join(settings['destination'], dst)
         logger.debug('Copy %s to %s', src, dst)
-        copy(src, dst, symlink=settings['orig_link'])
+        copy(src, dst, symlink=settings['orig_link'], rellink=settings['rel_link'])
 
     stats = gal.stats
 
@@ -157,9 +173,10 @@ def build(source, destination, debug, verbose, force, config, theme, title,
         opt = ' ({})'.format(', '.join(opt)) if opt else ''
         return '{} {}s{}'.format(stats[_type], _type, opt)
 
-    print('Done.\nProcessed {} and {} in {:.2f} seconds.'
-          .format(format_stats('image'), format_stats('video'),
-                  time.time() - start_time))
+    if not quiet:
+        print('Done, processed {} and {} in {:.2f} seconds.'
+              .format(format_stats('image'), format_stats('video'),
+                      time.time() - start_time))
 
 
 def init_plugins(settings):
@@ -173,7 +190,7 @@ def init_plugins(settings):
 
     for plugin in settings['plugins']:
         try:
-            if isinstance(plugin, string_types):
+            if isinstance(plugin, str):
                 mod = importlib.import_module(plugin)
                 mod.register(settings)
             else:
@@ -199,22 +216,20 @@ def serve(destination, port, config):
         settings = read_settings(config)
         destination = settings.get('destination')
         if not os.path.exists(destination):
-            sys.stderr.write("The '{}' directory doesn't exist, "
-                             "maybe try building first?"
-                             "\n".format(destination))
+            sys.stderr.write("The '{}' directory doesn't exist, maybe try "
+                             "building first?\n".format(destination))
             sys.exit(1)
     else:
         sys.stderr.write("The {destination} directory doesn't exist "
-                         "and the config file ({config}) could not be "
-                         "read."
-                         "\n".format(destination=destination, config=config))
+                         "and the config file ({config}) could not be read.\n"
+                         .format(destination=destination, config=config))
         sys.exit(2)
 
-    print('DESTINATION : {}'.format(destination))
+    print(f'DESTINATION : {destination}')
     os.chdir(destination)
     Handler = server.SimpleHTTPRequestHandler
     httpd = socketserver.TCPServer(("", port), Handler, False)
-    print(" * Running on http://127.0.0.1:{}/".format(port))
+    print(f" * Running on http://127.0.0.1:{port}/")
 
     try:
         httpd.allow_reuse_address = True
@@ -223,6 +238,7 @@ def serve(destination, port, config):
         httpd.serve_forever()
     except KeyboardInterrupt:
         print('\nAll done!')
+
 
 @main.command()
 @argument('target')
@@ -240,7 +256,7 @@ def set_meta(target, keys, overwrite=False):
     """
 
     if not os.path.exists(target):
-        sys.stderr.write("The target {} does not exist.\n".format(target))
+        sys.stderr.write(f"The target {target} does not exist.\n")
         sys.exit(1)
     if len(keys) < 2 or len(keys) % 2 > 0:
         sys.stderr.write("Need an even number of arguments.\n")
@@ -256,7 +272,7 @@ def set_meta(target, keys, overwrite=False):
         sys.exit(2)
 
     with open(descfile, "w") as fp:
-        for i in range(len(keys)//2):
-            k,v = keys[i*2:(i+1)*2]
-            fp.write("{}: {}\n".format(k.capitalize(), v))
-    print("{} metadata key(s) written to {}".format(len(keys)//2, descfile))
+        for i in range(len(keys) // 2):
+            k, v = keys[i * 2:(i + 1) * 2]
+            fp.write(f"{k.capitalize()}: {v}\n")
+    print("{} metadata key(s) written to {}".format(len(keys) // 2, descfile))

@@ -13,27 +13,22 @@ Bundled themes
 Sigal comes with three themes, located in the ``sigal/themes`` folder:
 
 **colorbox**:
-    `source <http://www.jacklmoore.com/colorbox>`_, `demo
-    <http://saimon.org/sigal-demo/colorbox/>`_. This theme uses a Swipe plugin
+    `source <http://www.jacklmoore.com/colorbox>`__, `demo
+    <http://saimon.org/sigal-demo/colorbox/>`__. This theme uses a Swipe plugin
     to browse pictures on touch devices.
 
 **galleria**:
-    `source <http://galleria.io/>`_, `demo
-    <http://saimon.org/sigal-demo/galleria/>`_. This theme is based on the
+    `source <http://galleria.io/>`__, `demo
+    <http://saimon.org/sigal-demo/galleria/>`__. This theme is based on the
     classic theme, pictures can be browsed with left/right keys, fullscreen
     support is available with the `f` key, and a map can be shown with the `m`
-    key if the ``show_map`` setting is True.
+    key if the ``show_map`` setting is True. The ``leaflet_provider`` setting
+    can be used to customize the tile provider (using `Leaflet-providers
+    <https://github.com/leaflet-extras/leaflet-providers#providers>`_).
 
 **photoswipe**:
-    `source <http://photoswipe.com/>`_, `demo
-    <http://saimon.org/sigal-demo/photoswipe/>`_.  The photoswipe
-    theme comes with some limitations : It does not support video (see
-    https://github.com/dimsemenov/PhotoSwipe/issues/651 for details). Video
-    support will be added when available.
-
-For developers, a Makefile is available to concatenate and minify the css
-files, using `cssmin <https://pypi.python.org/pypi/cssmin>`_ (``pip install
-cssmin``).
+    `source <http://photoswipe.com/>`__, `demo
+    <http://saimon.org/sigal-demo/photoswipe/>`__.
 
 Variables
 ~~~~~~~~~
@@ -60,6 +55,15 @@ You can use the following variables in your template:
 ``theme.name``, ``theme.url``
     Name and url of the currently used theme.
 
+Filters
+~~~~~~~
+
+You can define custom jinja filters for your template by creating a ``filters.py`` script
+at the root of your template directory.
+
+This script will then be imported and all defined functions will be available as jinja filters
+with the same names in your templates.
+
 Documentation of sigal's main classes
 -------------------------------------
 
@@ -75,10 +79,12 @@ Documentation of sigal's main classes
 .. autoclass:: sigal.gallery.Image
    :members:
    :undoc-members:
+   :inherited-members:
 
 .. autoclass:: sigal.gallery.Video
    :members:
    :undoc-members:
+   :inherited-members:
 
 .. _simple-exif-data:
 
@@ -102,13 +108,18 @@ templates. If available, you can use:
     The aperture value given as an F-number and formatted as a decimal.
 
 ``media.exif.datetime``
+    The time the image was *taken*. It is formatted with the
+    ``datetime_format`` setting, which is ``%c`` by default.
+    See Python's `datetime documentation`_ for a list of all possible values.
+
+``media.exif.dateobj``
     The time the image was *taken*. It is a datetime object, that can be
     formatted with ``strftime``:
 
     .. code-block:: jinja
 
-        {% if media.exif.datetime %}
-            {{ media.exif.datetime.strftime('%A, %d. %B %Y') }}
+        {% if media.exif.dateobj %}
+            {{ media.exif.dateobj.strftime('%A, %d. %B %Y') }}
         {% endif %}
 
     This will output something like "Monday, 25. June 2013", depending on your
@@ -124,7 +135,12 @@ templates. If available, you can use:
     .. code-block:: jinja
 
         {% if media.exif.gps %}
-            <a href="http://openstreetmap.org/index.html?lat={{
-            media.exif.gps.lat }}&lon={{ media.exif.long}}">Go to location</a>
+            <a href="https://www.openstreetmap.org/?mlat={{
+                media.exif.gps.lat }}&mlon={{
+                media.exif.gps.lon }}#map=18/{{
+                media.exif.gps.lat }}/{{
+                media.exif.gps.lon }}">Go to location (OpenStreetMap)</a>
         {% endif %}
 
+
+.. _datetime documentation: https://docs.python.org/3/library/datetime.html#strftime-strptime-behavior

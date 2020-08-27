@@ -1,6 +1,4 @@
-# -*- coding: utf-8 -*-
-
-# Copyright (c) 2009-2016 - Simon Conseil
+# Copyright (c) 2009-2020 - Simon Conseil
 # Copyright (c)      2014 - Jamie Starke
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -31,19 +29,14 @@ previous/next :class:`~sigal.gallery.Media` objects.
 
 """
 
-import codecs
-import logging
 import os
 
 from sigal import signals
-from sigal.writer import Writer
 from sigal.utils import url_from_path
-from sigal.pkgmeta import __url__ as sigal_link
-
-logger = logging.getLogger(__name__)
+from sigal.writer import AbstractWriter
 
 
-class PageWriter(Writer):
+class PageWriter(AbstractWriter):
     '''A writer for writing media pages, based on writer'''
 
     template_file = "media.html"
@@ -51,6 +44,7 @@ class PageWriter(Writer):
     def write(self, album, media_group):
         ''' Generate the media page and save it '''
 
+        from sigal import __url__ as sigal_link
         file_path = os.path.join(album.dst_path, media_group[0].filename)
 
         page = self.template.render({
@@ -63,12 +57,12 @@ class PageWriter(Writer):
             'sigal_link': sigal_link,
             'theme': {'name': os.path.basename(self.theme),
                       'url': url_from_path(os.path.relpath(self.theme_path,
-                                                           file_path))},
+                                                           album.dst_path))},
         })
 
         output_file = "%s.html" % file_path
 
-        with codecs.open(output_file, 'w', 'utf-8') as f:
+        with open(output_file, 'w', encoding='utf-8') as f:
             f.write(page)
 
 

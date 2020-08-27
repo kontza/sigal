@@ -2,6 +2,8 @@
  Plugins
 =========
 
+.. contents::
+
 How to use plugins
 ------------------
 
@@ -76,7 +78,7 @@ Signals
    :noindex:
 
    Called after the image is resized. This signal work differently, the
-   modified image object must be returned by the registered funtion.
+   modified image object must be returned by the registered function.
 
    :param img: the PIL image object.
    :param settings: the settings dict.
@@ -89,15 +91,40 @@ Adjust plugin
 
 .. automodule:: sigal.plugins.adjust
 
+Compress assets plugin
+======================
+
+.. automodule:: sigal.plugins.compress_assets
+
 Copyright plugin
 ================
 
 .. automodule:: sigal.plugins.copyright
 
+Encrypt plugin
+==============
+
+.. automodule:: sigal.plugins.encrypt
+
+Extended caching plugin
+=======================
+
+.. automodule:: sigal.plugins.extended_caching
+
+Feeds plugin
+============
+
+.. automodule:: sigal.plugins.feeds
+
 Media page plugin
 =================
 
 .. automodule:: sigal.plugins.media_page
+
+Nomedia plugin
+==============
+
+.. automodule:: sigal.plugins.nomedia
 
 Upload to S3 plugin
 ===================
@@ -105,11 +132,12 @@ Upload to S3 plugin
 .. automodule:: sigal.plugins.upload_s3
 
 Watermark plugin
-===================
+================
 
 .. automodule:: sigal.plugins.watermark
 
-Feeds plugin
-============
+ZIP Gallery plugin
+==================
 
-.. automodule:: sigal.plugins.feeds
+.. automodule:: sigal.plugins.zip_gallery
+

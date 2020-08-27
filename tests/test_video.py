@@ -1,21 +1,18 @@
-# -*- coding:utf-8 -*-
-
-from __future__ import division
-
 import os
+
 import pytest
 
-from sigal.video import video_size, generate_video, process_video
-from sigal.settings import create_settings, Status
+from sigal.settings import Status, create_settings
+from sigal.video import generate_video, process_video, video_size
 
 CURRENT_DIR = os.path.dirname(__file__)
-TEST_VIDEO = 'stallman software-freedom-day-low.ogv'
+TEST_VIDEO = 'example video.ogv'
 SRCFILE = os.path.join(CURRENT_DIR, 'sample', 'pictures', 'video', TEST_VIDEO)
 
 
 def test_video_size():
     size_src = video_size(SRCFILE)
-    assert size_src == (480, 270)
+    assert size_src == (320, 240)
     size_src = video_size('missing/file.mp4')
     assert size_src == (0, 0)
 
@@ -42,14 +39,14 @@ def test_generate_video_fit_height(tmpdir, fmt):
 
     base, ext = os.path.splitext(TEST_VIDEO)
     dstfile = str(tmpdir.join(base + '.' + fmt))
-    settings = create_settings(video_size=(50, 100), video_format=fmt)
+    settings = create_settings(video_size=(80, 100), video_format=fmt)
     generate_video(SRCFILE, dstfile, settings,
                    options=settings[fmt + '_options'])
 
     size_src = video_size(SRCFILE)
     size_dst = video_size(dstfile)
 
-    assert size_dst[0] == 50
+    assert size_dst[0] == 80
     # less than 2% error on ratio
     assert abs(size_dst[0]/size_dst[1] - size_src[0]/size_src[1]) < 2e-2
 

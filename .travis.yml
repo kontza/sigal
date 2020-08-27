@@ -1,34 +1,44 @@
 language: python
 cache: pip
-env:
-  global:
-    - PILLOW_VERSION=3.2.0
+dist: xenial
 
 matrix:
   include:
-    - python: 2.7
-      env: PILLOW_VERSION=2.9.0
-    - python: 2.7
-      env: PILLOW_VERSION=3.0.0
-    - python: 2.7
-    - python: 3.3
-    - python: 3.4
-    - python: 3.5
+    - python: 3.6
+      before_install:
+        - sudo add-apt-repository ppa:mc3man/xerus-media -y
+        - sudo apt-get update -qq
+        - sudo apt-get install -qq ubuntu-restricted-extras ffmpeg
+      before_script:
+        ffmpeg --help
+    - python: 3.7
+      before_install:
+        - sudo add-apt-repository ppa:mc3man/xerus-media -y
+        - sudo apt-get update -qq
+        - sudo apt-get install -qq ubuntu-restricted-extras ffmpeg
+      before_script:
+        ffmpeg --help
+    - python: 3.8
+      before_install:
+        - sudo add-apt-repository ppa:mc3man/xerus-media -y
+        - sudo apt-get update -qq
+        - sudo apt-get install -qq ubuntu-restricted-extras ffmpeg
+      before_script:
+        ffmpeg --help
+    - python: 3.8
+      env: TOXENV=doc
+    - python: 3.8
+      env: TOXENV=check
+  allow_failures:
+    - env: TOXENV=check
 
+install: pip install -U tox-travis
 
-before_install:
-    # Dependencies to build PIL
-    - sudo apt-get update -qq
-    - sudo apt-get install -qq ubuntu-restricted-extras
-    - sudo apt-get install -qq libfreetype6-dev libjpeg8-dev zlib1g-dev ffmpeg
-    - sudo locale-gen fr_FR.UTF-8
-    - ffmpeg -version
-install:
-    - pip install -q Pillow==$PILLOW_VERSION
-    - pip install pytest pytest-cov coveralls
-    - pip install .
-script: py.test -sv --cov sigal --cov-report term-missing tests/
+script: tox -- -v
+
 after_success:
-    coveralls
+  - pip install codecov
+  - codecov
+
 notifications:
     irc: "chat.freenode.net#sigal"

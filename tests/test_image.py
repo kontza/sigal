@@ -1,20 +1,19 @@
-# -*- coding:utf-8 -*-
-
 import os
-import PIL
+from unittest.mock import patch
+
 import pytest
 from PIL import Image
 
 from sigal import init_logging
-from sigal.image import (generate_image, generate_thumbnail, get_exif_tags,
-                         get_exif_data, get_size, process_image)
-from sigal.settings import create_settings, Status
+from sigal.image import (generate_image, generate_thumbnail, get_exif_data,
+                         get_exif_tags, get_iptc_data, get_size, process_image)
+from sigal.settings import Status, create_settings
 
 CURRENT_DIR = os.path.dirname(__file__)
-TEST_IMAGE = 'exo20101028-b-full.jpg'
+TEST_IMAGE = 'KeckObservatory20071020.jpg'
 SRCFILE = os.path.join(CURRENT_DIR, 'sample', 'pictures', 'dir2', TEST_IMAGE)
 
-TEST_GIF_IMAGE = '50a1d0bc-763d-457e-b634-c87f16a64270.gif'
+TEST_GIF_IMAGE = 'example.gif'
 SRC_GIF_FILE = os.path.join(CURRENT_DIR, 'sample', 'pictures',
                             'dir1', 'test1', TEST_GIF_IMAGE)
 
@@ -43,6 +42,43 @@ def test_generate_image(tmpdir):
         generate_image(SRCFILE, dstfile, settings, options=options)
         im = Image.open(dstfile)
         assert im.size == size
+
+def test_generate_image_imgformat(tmpdir):
+    "Test the effects of the img_format setting on generate_image."
+
+    dstfile = str(tmpdir.join(TEST_IMAGE))
+    for i, outfmt in enumerate(["JPEG", "PNG", "TIFF"]):
+        settings = create_settings(img_size=(300,300), img_processor='ResizeToFill',
+                                   copy_exif_data=True, img_format=outfmt)
+        options = {'quality': 85}
+        generate_image(SRCFILE, dstfile, settings, options=options)
+        im = Image.open(dstfile)
+        assert im.format == outfmt
+
+def test_resize_image_portrait(tmpdir):
+    """Test that the area is the same regardless of aspect ratio."""
+    size = (300, 200)
+    settings = create_settings(img_size=size)
+
+    portrait_image = 'm57_the_ring_nebula-587px.jpg'
+    portrait_src = os.path.join(CURRENT_DIR, 'sample', 'pictures', 'dir2', portrait_image)
+    portrait_dst = str(tmpdir.join(portrait_image))
+
+    generate_image(portrait_src, portrait_dst, settings)
+    im = Image.open(portrait_dst)
+
+    # In the default mode, PILKit resizes in a way to never make an image
+    # smaller than either of the lengths, the other is scaled accordingly.
+    # Hence we test that the shorter side has the smallest length.
+    assert im.size[0] == 200
+
+    landscape_image = 'KeckObservatory20071020.jpg'
+    landscape_src = os.path.join(CURRENT_DIR, 'sample', 'pictures', 'dir2', landscape_image)
+    landscape_dst = str(tmpdir.join(landscape_image))
+
+    generate_image(landscape_src, landscape_dst, settings)
+    im = Image.open(landscape_dst)
+    assert im.size[1] == 200
 
 
 @pytest.mark.parametrize(("image", "path"), [(TEST_IMAGE, SRCFILE),
@@ -85,21 +121,20 @@ def test_generate_image_processor(tmpdir):
 
 @pytest.mark.parametrize(
     ("image", "path", "wide_size", "high_size"),
-    [(TEST_IMAGE, SRCFILE, (185, 150), (150, 122)),
-     (TEST_GIF_IMAGE, SRC_GIF_FILE, (127, 150), (150, 177))])
+    [(TEST_IMAGE, SRCFILE, (200, 133), (150, 100)),
+     (TEST_GIF_IMAGE, SRC_GIF_FILE, (134, 150), (150, 168))])
 def test_generate_thumbnail(tmpdir, image, path, wide_size, high_size):
     "Test the generate_thumbnail function."
 
     dstfile = str(tmpdir.join(image))
-    delay = 0
     for size in [(200, 150), (150, 200)]:
-        generate_thumbnail(path, dstfile, size, delay)
+        generate_thumbnail(path, dstfile, size)
         im = Image.open(dstfile)
         assert im.size == size
 
     for size, thumb_size in [((200, 150), wide_size),
                              ((150, 200), high_size)]:
-        generate_thumbnail(path, dstfile, size, delay, fit=False)
+        generate_thumbnail(path, dstfile, size, fit=False)
         im = Image.open(dstfile)
         assert im.size == thumb_size
 
@@ -109,15 +144,16 @@ def test_get_exif_tags():
     src_file = os.path.join(CURRENT_DIR, 'sample', 'pictures', 'dir1', 'test1',
                             test_image)
     data = get_exif_data(src_file)
-    simple = get_exif_tags(data)
+    simple = get_exif_tags(data, datetime_format='%d/%m/%Y')
     assert simple['fstop'] == 3.9
     assert simple['focal'] == 12.0
     assert simple['iso'] == 50
     assert simple['Make'] == 'NIKON'
-    assert simple['datetime'] == 'Sunday, 22. January 2006'
-    if PIL.PILLOW_VERSION == '3.0.0':
-        assert simple['exposure'] == 0.00100603
-    else:
+    assert simple['datetime'] == '22/01/2006'
+    try:
+        # Pillow 7.2+
+        assert simple['exposure'] == '0.00100603'
+    except Exception:
         assert simple['exposure'] == '100603/100000000'
 
     data = {'FNumber': [1, 0], 'FocalLength': [1, 0], 'ExposureTime': 10}
@@ -135,6 +171,39 @@ def test_get_exif_tags():
     assert 'exposure' not in simple
     assert 'datetime' not in simple
     assert 'gps' not in simple
+
+
+def test_get_iptc_data(caplog):
+    test_image = '1.jpg'
+    src_file = os.path.join(CURRENT_DIR, 'sample', 'pictures', 'iptcTest',
+                            test_image)
+    data = get_iptc_data(src_file)
+    # Title
+    assert data["title"] == 'Haemostratulus clouds over Canberra - ' + \
+        '2005-12-28 at 03-25-07'
+    # Description
+    assert data["description"] == '"Haemo" because they look like haemoglobin ' + \
+        'cells and "stratulus" because I can\'t work out whether ' + \
+        'they\'re Stratus or Cumulus clouds.\nWe\'re driving down ' + \
+        'the main drag in Canberra so it\'s Parliament House that ' + \
+        'you can see at the end of the road.'
+    # This file has no IPTC data
+    test_image = '21.jpg'
+    src_file = os.path.join(CURRENT_DIR, 'sample', 'pictures', 'exifTest',
+                            test_image)
+    assert get_iptc_data(src_file) == {}
+
+    # Headline
+    test_image = '3.jpg'
+    src_file = os.path.join(CURRENT_DIR, 'sample', 'pictures', 'iptcTest',
+                            test_image)
+    data = get_iptc_data(src_file)
+    assert data["headline"] == 'Ring Nebula, M57'
+
+    # Test catching the SyntaxError -- assert output
+    with patch('sigal.image.IptcImagePlugin.getiptcinfo', side_effect=SyntaxError):
+        get_iptc_data(src_file)
+        assert ['IPTC Error in'] == [log.message[:13] for log in caplog.records]
 
 
 def test_iso_speed_ratings():
@@ -158,7 +227,7 @@ def test_null_exposure_time():
 
 
 def test_exif_copy(tmpdir):
-    "Test if EXIF data can transfered copied to the resized image."
+    "Test if EXIF data can transferred copied to the resized image."
 
     test_image = '11.jpg'
     src_file = os.path.join(CURRENT_DIR, 'sample', 'pictures', 'dir1', 'test1',
@@ -176,8 +245,6 @@ def test_exif_copy(tmpdir):
     assert not simple
 
 
-@pytest.mark.xfail(PIL.PILLOW_VERSION == '3.0.0',
-                   reason="Pillow 3.0.0 was broken")
 def test_exif_gps(tmpdir):
     """Test reading out correct geo tags"""
 
